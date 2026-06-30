@@ -6,6 +6,7 @@ import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerat
 import { getCalendarDayStateWithRing as getCalendarDayState } from '../../utils/calendarStates';
 import { doesDateMatchRule } from '../../utils/ruleEngine';
 import DayModal from './DayModal';
+import SearchableSelect from '../ui/SearchableSelect';
 
 export default function CalendarScreen({ habits, tasks, rules, onTasksUpdate, initialTarget, onTargetConsumed }) {
   const [selectedHabitId, setSelectedHabitId] = useState(
@@ -102,15 +103,11 @@ export default function CalendarScreen({ habits, tasks, rules, onTasksUpdate, in
       {/* Избор на задача */}
       <div className="bg-gradient-to-br from-blue-100 to-cyan-100 rounded-2xl shadow-lg p-4">
         <label className="block text-sm font-semibold text-gray-700 mb-2">Избери задача</label>
-        <select
-          value={selectedHabitId || ''}
-          onChange={e => setSelectedHabitId(e.target.value)}
-          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-400 focus:outline-none font-semibold"
-        >
-          {sortedHabits.map(h => (
-            <option key={h.id} value={h.id}>{h.name}</option>
-          ))}
-        </select>
+        <SearchableSelect
+          options={sortedHabits}
+          value={selectedHabitId}
+          onChange={setSelectedHabitId}
+        />
       </div>
 
       {/* Навигация */}

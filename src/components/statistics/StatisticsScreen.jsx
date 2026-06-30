@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import DateInput from '../ui/DateInput';
+import SearchableSelect from '../ui/SearchableSelect';
 import { doesDateMatchRule } from '../../utils/ruleEngine';
 import { isTaskCompleted } from '../../utils/habitUtils';
 import { toMidnight, formatDate } from '../../utils/dateUtils';
@@ -181,15 +182,11 @@ export default function StatisticsScreen({ habits, tasks, rules }) {
       {/* Избор на задача */}
       <div className="bg-gradient-to-br from-blue-100 to-cyan-100 rounded-2xl shadow-lg p-4">
         <label className="block text-sm font-semibold text-gray-700 mb-2">Избери задача за статистика</label>
-        <select
-          value={selectedId || ''}
-          onChange={e => setSelectedId(e.target.value)}
-          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-400 focus:outline-none font-semibold"
-        >
-          {sortedHabits.map(h => (
-            <option key={h.id} value={h.id}>{h.name}</option>
-          ))}
-        </select>
+        <SearchableSelect
+          options={sortedHabits}
+          value={selectedId}
+          onChange={setSelectedId}
+        />
       </div>
 
       {/* Избор на период */}

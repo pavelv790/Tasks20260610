@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import { toMidnight, formatDate } from '../../utils/dateUtils';
 import { isTaskCompleted } from '../../utils/habitUtils';
 
@@ -18,6 +19,7 @@ function formatDisplayDate(dateStr) {
 
 export default function MissedScreen({ habits, tasks, onNavigateToCalendar }) {
   const [period, setPeriod] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const missedTasks = useMemo(() => {
     const today = toMidnight(new Date());
@@ -58,6 +60,10 @@ export default function MissedScreen({ habits, tasks, onNavigateToCalendar }) {
     return m;
   }, [habits]);
 
+  const filteredMissedTasks = searchQuery.trim()
+    ? missedTasks.filter(t => habitMap[t.habitId]?.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : missedTasks;
+
   return (
     <div className="space-y-4">
 
@@ -77,19 +83,36 @@ export default function MissedScreen({ habits, tasks, onNavigateToCalendar }) {
         </div>
       </div>
 
+      {missedTasks.length > 0 && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Търси задача..."
+            className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-400 focus:outline-none bg-white"
+          />
+        </div>
+      )}
+
       {missedTasks.length === 0 ? (
         <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
           <div className="text-5xl mb-3">🎉</div>
           <p className="text-lg font-semibold text-gray-700">Няма пропуснати задачи</p>
           <p className="text-gray-500 mt-1 text-sm">за избрания период</p>
         </div>
+      ) : filteredMissedTasks.length === 0 ? (
+        <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+          <p className="text-gray-500">Няма намерени задачи</p>
+        </div>
       ) : (
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
           <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100">
-            <span className="text-sm font-semibold text-gray-500">Общо: {missedTasks.length}</span>
+            <span className="text-sm font-semibold text-gray-500">Общо: {filteredMissedTasks.length}</span>
           </div>
           <div className="divide-y divide-gray-100">
-            {missedTasks.map(task => {
+            {filteredMissedTasks.map(task => {
               const habit = habitMap[task.habitId];
               if (!habit) return null;
               return (

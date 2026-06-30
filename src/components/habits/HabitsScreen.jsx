@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import HabitCard    from './HabitCard';
 import HabitModal   from './HabitModal';
 import DeleteModal  from '../ui/DeleteModal';
@@ -13,6 +13,7 @@ export default function HabitsScreen({ habits, rules, onSave, onDelete, onArchiv
   const [archiveTarget, setArchiveTarget] = useState(null);
   const [showAlert,     setShowAlert]     = useState(false);
   const [draggedId,     setDraggedId]     = useState(null);
+  const [searchQuery,   setSearchQuery]   = useState('');
 
   useEffect(() => {
     const withoutOrder = habits.filter(h => h.order === undefined || h.order === null);
@@ -32,6 +33,10 @@ export default function HabitsScreen({ habits, rules, onSave, onDelete, onArchiv
     }
     return a.name.localeCompare(b.name, 'bg');
   });
+  const isSearching = searchQuery.trim().length > 0;
+  const filteredSorted = isSearching
+    ? sorted.filter(h => h.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : sorted;
   const moveHabit = (habitId, direction) => {
     const idx = sorted.findIndex(h => h.id === habitId);
     const newIdx = idx + direction;
@@ -89,6 +94,17 @@ export default function HabitsScreen({ habits, rules, onSave, onDelete, onArchiv
         💡 Дръпни с drag-and-drop за пренареждане
       </p>
 
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Търси задача..."
+          className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-400 focus:outline-none bg-white"
+        />
+      </div>
+
       {habits.length === 0 ? (
         <div className="bg-white rounded-3xl shadow-xl p-12 text-center">
           <div className="text-6xl mb-4">📁</div>
@@ -97,21 +113,23 @@ export default function HabitsScreen({ habits, rules, onSave, onDelete, onArchiv
         </div>
       ) : (
         <div className="space-y-3">
-          {sorted.map(habit => (
+          {filteredSorted.length === 0 ? (
+            <p className="text-center text-gray-500 py-6">Няма намерени задачи</p>
+          ) : filteredSorted.map(habit => (
             <HabitCard
               key={habit.id}
               habit={habit}
               onEdit={h => { setEditing(h); setShowModal(true); }}
               onDelete={handleDeleteRequest}
               onArchive={h => setArchiveTarget(h)}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
+              onDragStart={isSearching ? () => {} : handleDragStart}
+              onDragOver={isSearching ? () => {} : handleDragOver}
+              onDrop={isSearching ? () => {} : handleDrop}
               isDragging={draggedId === habit.id}
               onMoveUp={() => moveHabit(habit.id, -1)}
               onMoveDown={() => moveHabit(habit.id, 1)}
-              isFirst={sorted.indexOf(habit) === 0}
-              isLast={sorted.indexOf(habit) === sorted.length - 1}
+              isFirst={isSearching ? true : sorted.indexOf(habit) === 0}
+              isLast={isSearching ? true : sorted.indexOf(habit) === sorted.length - 1}
             />
           ))}
         </div>

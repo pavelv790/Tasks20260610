@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Search } from 'lucide-react';
 import { formatDate, formatDisplayDateWithToday, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight } from '../../utils/dateUtils';
 import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerator';
 import { getEffectiveStatus, getProgressText, isTaskCompleted } from '../../utils/habitUtils';
@@ -17,6 +17,7 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
   const [expandedNote,   setExpandedNote]   = useState(null);
   const [noteValues,     setNoteValues]     = useState({});
   const [modalNote,      setModalNote]      = useState('');
+  const [searchQuery,    setSearchQuery]    = useState('');
 
   useEffect(() => {
     if (expandedNote === null) return;
@@ -100,6 +101,11 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
       return { habit, task, status };
     })
     .filter(Boolean);
+
+  const isSearching = searchQuery.trim().length > 0;
+  const filteredEntries = isSearching
+    ? entries.filter(({ habit }) => habit.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : entries;
 
   const handleTaskUpdate = (updatedTask) => {
     const withNote = modalNote !== (updatedTask.note || '')
@@ -246,6 +252,17 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
         )}
       </div>
 
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Търси задача..."
+          className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-400 focus:outline-none bg-white"
+        />
+      </div>
+
       <div className="space-y-2">
         {entries.length === 0 ? (
           <div className="bg-gradient-to-br from-blue-100 to-cyan-100 rounded-2xl shadow-lg p-8 text-center">
@@ -257,8 +274,10 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
               <><div className="text-6xl mb-4">🎉</div><p className="text-xl font-semibold text-green-600">Браво! Всичко е завършено!</p><p className="text-gray-500 mt-2">Днес си го направил страхотно! 💪</p></>
             )}
           </div>
+        ) : filteredEntries.length === 0 ? (
+          <p className="text-center text-gray-500 py-6">Няма намерени задачи</p>
         ) : (
-          entries.map(({ habit, task, status }) => {
+          filteredEntries.map(({ habit, task, status }) => {
             const progressText = getProgressText(task);
             const activeRule = rules.find(r => r.habitId === habit.id && r.isActive);
             const dayState = getCalendarDayState(selectedDate, task, activeRule);
@@ -279,10 +298,10 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
             else if (status === 'missed') { statusIcon = '✗'; statusText = 'Пропуснато'; }
 
             return (
-              <div key={task.id} draggable
-                onDragStart={e => handleDragStart(e, habit.id)}
-                onDragOver={e => e.preventDefault()}
-                onDrop={e => handleDrop(e, habit.id)}
+              <div key={task.id} draggable={!isSearching}
+                onDragStart={e => !isSearching && handleDragStart(e, habit.id)}
+                onDragOver={e => !isSearching && e.preventDefault()}
+                onDrop={e => !isSearching && handleDrop(e, habit.id)}
                 className={`w-full ${bgColor} rounded-xl shadow-md p-4 transition-all hover:shadow-lg ${draggedId === habit.id ? 'opacity-50 scale-95' : ''}`}
                 style={{
                   ...(dayState.bgColor.includes('gradient') ? { background: 'linear-gradient(to bottom right, white, #86efac)' } : {}),
@@ -335,13 +354,13 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
                     <div className="flex flex-col gap-0.5">
                       <button
                         onClick={() => moveEntry(habit.id, -1)}
-                        disabled={entries.findIndex(e => e.habit.id === habit.id) === 0}
+                        disabled={isSearching || entries.findIndex(e => e.habit.id === habit.id) === 0}
                         className="p-0.5 hover:bg-white hover:bg-opacity-50 rounded transition-colors disabled:opacity-30 text-xs leading-none"
                         title="Премести нагоре"
                       >▲</button>
                       <button
                         onClick={() => moveEntry(habit.id, 1)}
-                        disabled={entries.findIndex(e => e.habit.id === habit.id) === entries.length - 1}
+                        disabled={isSearching || entries.findIndex(e => e.habit.id === habit.id) === entries.length - 1}
                         className="p-0.5 hover:bg-white hover:bg-opacity-50 rounded transition-colors disabled:opacity-30 text-xs leading-none"
                         title="Премести надолу"
                       >▼</button>
