@@ -26,7 +26,7 @@
     { id: 'habits',     label: 'Задачи',     Icon: Folder    },
     { id: 'calendar',   label: 'Календар',   Icon: Calendar  },
     { id: 'statistics', label: 'Статистика', Icon: BarChart3 },
-    { id: 'missed',     label: 'Пропуснати', Icon: Archive   },
+    { id: 'missed',     label: '(Не)отработени', Icon: Archive   },
   ];
 
   // ─────────────────────────────────────────────────────────

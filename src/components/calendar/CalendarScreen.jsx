@@ -71,7 +71,7 @@ export default function CalendarScreen({ habits, tasks, rules, onTasksUpdate, in
 
   // Обновяване на задачи
   const handleTasksUpdate = (updatedTasks, keepOpen) => {
-    onTasksUpdate(updatedTasks);
+    onTasksUpdate(updatedTasks, true);
     if (!keepOpen) setShowDayModal(false);
   };
 
