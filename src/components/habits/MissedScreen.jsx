@@ -109,7 +109,7 @@ export default function MissedScreen({ habits, tasks, onNavigateToCalendar }) {
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
-            Неотработени
+            Пропуснати
           </button>
           <button onClick={() => setView('unlinked')}
             className={`flex-1 py-2 px-3 rounded-xl text-sm font-semibold transition-all ${
@@ -118,7 +118,7 @@ export default function MissedScreen({ habits, tasks, onNavigateToCalendar }) {
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
-            Отработени
+            Отработени без връзка
           </button>
         </div>
         <div className="flex gap-2">
