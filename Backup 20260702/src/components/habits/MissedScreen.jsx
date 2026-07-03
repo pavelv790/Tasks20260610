@@ -118,7 +118,7 @@ export default function MissedScreen({ habits, tasks, onNavigateToCalendar }) {
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
-            Отработени (без връзка)
+            Отработени без връзка
           </button>
         </div>
         <div className="flex gap-2">
