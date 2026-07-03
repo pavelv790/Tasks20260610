@@ -26,7 +26,7 @@
     { id: 'habits',     label: 'Задачи',     Icon: Folder    },
     { id: 'calendar',   label: 'Календар',   Icon: Calendar  },
     { id: 'statistics', label: 'Статистика', Icon: BarChart3 },
-    { id: 'missed',     label: 'Извън план', Icon: Archive   },
+    { id: 'missed',     label: 'Пропуснати\u00A0и Отработени', Icon: Archive   },
   ];
 
   // ─────────────────────────────────────────────────────────
@@ -450,7 +450,6 @@
                         : 'text-gray-500 hover:bg-gray-100 hover:scale-105'
                     }`}
                   >
-                    <Icon className="w-5 h-5" />
                     <span className="text-xs font-semibold">{label}</span>
                   </button>
                 );
