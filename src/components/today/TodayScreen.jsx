@@ -23,7 +23,9 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
   useEffect(() => {
     if (expandedNote === null) return;
     const handler = (e) => {
-          if (!e.target.closest('[data-note-container]')) {
+      const toggleBtn = e.target.closest('[data-note-toggle]');
+      if (toggleBtn && toggleBtn.getAttribute('data-note-toggle') === String(expandedNote)) return;
+      if (!e.target.closest('[data-note-container]')) {
             const task = tasks.find(t => t.id === expandedNote);
             if (task) {
               const val = noteValues[task.id] ?? task.note ?? '';
@@ -346,9 +348,11 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
                         {expandedNote === task.id && (
                           <div data-note-container>
                             <textarea
+                              autoFocus
                               value={noteValues[task.id] ?? task.note ?? ''}
                               onChange={e => { e.stopPropagation(); setNoteValues(prev => ({ ...prev, [task.id]: e.target.value })); }}
                               onClick={e => e.stopPropagation()}
+                              onFocus={e => { const v = e.target.value; e.target.setSelectionRange(v.length, v.length); }}
                               placeholder="Бележка за този ден..."
                               rows={2}
                               className="w-full mt-1 px-2 py-1 border-2 border-gray-200 rounded-lg text-xs text-gray-700 bg-white bg-opacity-80 focus:border-indigo-400 focus:outline-none resize-none"
@@ -372,7 +376,20 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
                       >ℹ️</button>
                     )}
                     <button
-                      onClick={e => { e.stopPropagation(); setExpandedNote(prev => prev === task.id ? null : task.id); }}
+                      data-note-toggle={task.id}
+                      onClick={e => {
+                        e.stopPropagation();
+                        setExpandedNote(prev => {
+                          if (prev === task.id) {
+                            const val = noteValues[task.id] ?? task.note ?? '';
+                            if (val !== (task.note || '')) {
+                              onTasksUpdate([{ ...task, note: val }]);
+                            }
+                            return null;
+                          }
+                          return task.id;
+                        });
+                      }}
                       className="text-sm leading-none opacity-60 hover:opacity-100"
                       title="Бележка"
                     >📝</button>

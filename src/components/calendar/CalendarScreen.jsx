@@ -33,22 +33,12 @@ export default function CalendarScreen({ habits, tasks, rules, onTasksUpdate, in
     const year  = currentDate.getFullYear();
     const month = currentDate.getMonth();
 
-    const monthStart = new Date(year, month, 1);
-    const monthEnd   = new Date(year, month + 1, 0);
-    const hasTasksInMonth = tasks.some(t => {
-      if (t.habitId !== selectedHabitId) return false;
-      const d = new Date(t.date);
-      return d >= monthStart && d <= monthEnd;
-    });
-
-    if (hasTasksInMonth) return;
-
     const newTasks = generateTasksForMonth(activeHabit, [activeRule], tasks, year, month, true);
     if (newTasks.length > 0) {
       const withMissed = checkMissedTasks([...tasks, ...newTasks]);
       onTasksUpdate(withMissed, true);
     }
-  }, [currentDate, selectedHabitId]);
+  }, [currentDate, selectedHabitId, tasks]);
 
   // Навигация
   const goToPrevMonth = () => setCurrentDate(d => { const n = new Date(d); n.setMonth(n.getMonth() - 1); return n; });
