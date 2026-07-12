@@ -69,13 +69,13 @@ export const saveAppData = async (data) => {
   }
 };
 
-// Изчиства всичко
+// Изчиства само основния запис с данни (backup-ите се пазят)
 export const clearAppData = async () => {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx  = db.transaction(STORE_NAME, 'readwrite');
-      const req = tx.objectStore(STORE_NAME).clear();
+      const req = tx.objectStore(STORE_NAME).delete(DATA_KEY);
       req.onsuccess = () => resolve(true);
       req.onerror   = e => reject(e.target.error);
     });
