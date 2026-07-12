@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Download, Upload, Database, Trash2, Info, AlertTriangle } from 'lucide-react';
-import { exportToJson, importFromJson } from '../../utils/exportImport';
+import { exportToJson, importFromJson, validateAppData } from '../../utils/exportImport';
 import { saveBackup, listBackups, loadBackup } from '../../utils/storage';
 import ConfirmModal from '../ui/ConfirmModal';
 import ArchiveScreen from '../habits/ArchiveScreen';
@@ -10,6 +10,7 @@ export default function SettingsModal({ data, onClose, onImport, onClearAll, onU
   const [showSuccess,  setShowSuccess]  = useState(null);
   const [confirm,      setConfirm]      = useState(null);
   const [importing,    setImporting]    = useState(false);
+  const [importError,  setImportError]  = useState(null);
   const [backups, setBackups] = useState([]);
   const [showHelp, setShowHelp] = useState(false);
 
@@ -29,8 +30,14 @@ useEffect(() => {
     const file = e.target.files[0];
     if (!file) return;
     setImporting(true);
+    setImportError(null);
     try {
       const imported = await importFromJson(file);
+      const validationError = validateAppData(imported);
+      if (validationError) {
+        setImportError(validationError);
+        return;
+      }
       setConfirm({
         title:        '⚠️ Внимание!',
         message:      'Това ще замени ВСИЧКИ съществуващи данни!\n\nПродължаваш ли?',
@@ -44,6 +51,7 @@ useEffect(() => {
       });
     } catch (err) {
       console.error(err);
+      setImportError('Файлът не е валиден JSON.');
     } finally {
       setImporting(false);
       e.target.value = '';
@@ -122,6 +130,12 @@ useEffect(() => {
                 {showSuccess === 'backup'  && '✅ Резервно копие е създадено!'}
                 {showSuccess === 'restore' && '✅ Данните са възстановени!'}
                 {showSuccess === 'clear'   && '✅ Всички данни са изтрити!'}
+              </div>
+            )}
+
+            {importError && (
+              <div className="mb-4 p-3 bg-red-100 border-2 border-red-400 rounded-xl text-red-800 font-semibold text-center">
+                ⚠️ {importError}
               </div>
             )}
 

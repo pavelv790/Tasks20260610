@@ -329,7 +329,14 @@
 
     // Импортира данни
     const handleDataImport = (importedData) => {
-      setData(importedData);
+      const { dayOrders: importedDayOrders, ...rest } = importedData;
+      setData({
+        habits:         rest.habits ?? [],
+        tasks:          rest.tasks ?? [],
+        rules:          rest.rules ?? [],
+        archivedHabits: rest.archivedHabits ?? [],
+      });
+      setDayOrders(importedDayOrders ?? {});
     };
 
     // Нотификации
@@ -468,7 +475,7 @@
         {/* Modals */}
         {showSettings && (
           <SettingsModal
-            data={data}
+            data={{ ...data, dayOrders }}
             onClose={() => setShowSettings(false)}
             onImport={handleDataImport}
             onClearAll={handleClearAll}
