@@ -40,11 +40,8 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
   const effectiveTask = task?.manuallyReset ? null : task;
 
   const handleTaskUpdate = (updatedTask, ...extra) => {
-    const taskWithNote = note !== (task?.note || '')
-      ? { ...updatedTask, note }
-      : updatedTask;
-    let updated = allTasks.map(t => t.id === taskWithNote.id ? taskWithNote : t);
-    if (!allTasks.find(t => t.id === taskWithNote.id)) updated = [...updated, taskWithNote];
+    let updated = allTasks.map(t => t.id === updatedTask.id ? updatedTask : t);
+    if (!allTasks.find(t => t.id === updatedTask.id)) updated = [...updated, updatedTask];
     extra.forEach(t => {
       if (!t) return;
       const idx = updated.findIndex(x => x.id === t.id);
@@ -182,7 +179,7 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
                     createdBy: 'manual',
                   };
                   handleTaskUpdate(newTask);
-                  onClose();
+                  handleClose();
                 }}
                 className="w-full py-4 bg-gradient-to-r from-teal-400 to-teal-500 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-shadow"
               >
@@ -209,7 +206,7 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
             <div>
               <TaskActions
                 task={task}
-                onUpdate={t => { handleTaskUpdate(t); onClose(); }}
+                onUpdate={t => { handleTaskUpdate(t); handleClose(); }}
                 isMakeup={false}
               />
               <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
@@ -268,7 +265,7 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
               </div>
               <TaskActions
                 task={task}
-                onUpdate={t => { handleTaskUpdate(t); onClose(); }}
+                onUpdate={t => { handleTaskUpdate(t); handleClose(); }}
                 isMakeup={true}
               />
               <div className="mt-3">
@@ -289,7 +286,7 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
               </div>
               <TaskActions
                 task={task}
-                onUpdate={t => { handleTaskUpdate(t); onClose(); }}
+                onUpdate={t => { handleTaskUpdate(t); handleClose(); }}
                 isMakeup={true}
               />
               <div className="mt-3 space-y-2">
@@ -311,7 +308,7 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
             <div>
               <TaskActions
                 task={task}
-                onUpdate={t => { handleTaskUpdate(t); onClose(); }}
+                onUpdate={t => { handleTaskUpdate(t); handleClose(); }}
                 isMakeup={false}
               />
               <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
