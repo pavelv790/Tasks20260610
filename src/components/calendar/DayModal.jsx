@@ -7,7 +7,7 @@ import { checkMissedTasks } from '../../utils/taskGenerator';
 import TaskActions from '../today/TaskActions';
 import MakeupPicker from './MakeupPicker';
 
-export default function DayModal({ date, task, habit, allTasks, rules, onTasksUpdate, onClose, onCloseWithNote }) {
+export default function DayModal({ date, task, habit, allTasks, rules, onTasksUpdate, onClose }) {
   const [showMakeupPicker,   setShowMakeupPicker]   = useState(false);
   const [showUnlinkedPicker, setShowUnlinkedPicker] = useState(false);
   const [note, setNote] = useState(task?.note || '');
@@ -24,12 +24,8 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
   };
 
   const handleClose = () => {
-    if (onCloseWithNote) {
-      onCloseWithNote(note, task);
-    } else {
-      saveNote();
-      onClose();
-    }
+    saveNote();
+    onClose();
   };
 
   const rule          = rules.find(r => r.habitId === habit.id && r.isActive);
@@ -59,8 +55,13 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
     let updatedTask = { ...resetTaskProgress(task), makeupFromDate: null, makeupForDate: null };
     let extra = [];
     if (task.createdBy === 'manual' && !inRule && !task.makeupFromDate && !task.makeupForDate) {
-      saveNote();
-    onTasksUpdate(checkMissedTasks(allTasks.filter(t => t.id !== task.id)));
+      if (note.trim() !== '') {
+        const resetWithNote = { ...updatedTask, note };
+        const updated = allTasks.map(t => t.id === task.id ? resetWithNote : t);
+        onTasksUpdate(checkMissedTasks(updated));
+      } else {
+        onTasksUpdate(checkMissedTasks(allTasks.filter(t => t.id !== task.id)));
+      }
       onClose();
       return;
     }

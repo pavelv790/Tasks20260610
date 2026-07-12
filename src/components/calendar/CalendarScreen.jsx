@@ -264,14 +264,6 @@ style={{
           rules={rules}
           onTasksUpdate={handleTasksUpdate}
           onClose={() => setShowDayModal(false)}
-          onCloseWithNote={(note, task) => {
-            if (note !== (task?.note || '') && task) {
-              const updatedTask = { ...task, note };
-              const updated = tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
-              onTasksUpdate(updated, true);
-            }
-            setShowDayModal(false);
-          }}
         />
       )}
     </div>
