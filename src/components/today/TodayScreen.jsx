@@ -306,7 +306,7 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
             const activeRule = rules.find(r => r.habitId === habit.id && r.isActive);
             const dayState = getCalendarDayState(selectedDate, task, activeRule);
 
-            const isLight = dayState.bgColor === 'bg-gray-50' || dayState.bgColor.includes('from-white');
+            const isLight = dayState.bgColor === 'bg-gray-50' || dayState.bgColor.includes('from-white') || dayState.bgColor === 'bg-white';
             const textColor = isLight ? 'text-gray-800' : 'text-white';
 
             let bgColor;
@@ -329,6 +329,7 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
                 className={`w-full ${bgColor} rounded-xl shadow-md p-4 transition-all hover:shadow-lg ${draggedId === habit.id ? 'opacity-50 scale-95' : ''}`}
                 style={{
                   ...(dayState.bgColor.includes('gradient') ? { background: 'linear-gradient(to bottom right, white, #86efac)' } : {}),
+                  ...(dayState.bgColor === 'bg-white' ? { background: 'white' } : {}),
                   ...(dayState.ring ? { borderColor: '#a855f7', borderWidth: '2px', borderStyle: 'solid' } : {}),
                 }}
               >
