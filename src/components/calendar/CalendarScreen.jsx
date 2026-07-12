@@ -107,7 +107,7 @@ export default function CalendarScreen({ habits, tasks, rules, onTasksUpdate, in
             <ChevronLeft className="w-6 h-6 text-gray-700" />
           </button>
           <button
-            onClick={() => setShowMonthPicker(true)}
+            onClick={() => { setPickerYear(currentDate.getFullYear()); setShowMonthPicker(true); }}
             className="px-4 py-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-all font-bold text-gray-800"
           >
             📅 {monthYear}
