@@ -144,13 +144,17 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
   };
   
     const moveEntry = (habitId, direction) => {
-    const idx = sortedForDay.findIndex(h => h.id === habitId);
-    const newIdx = idx + direction;
-    if (newIdx < 0 || newIdx >= sortedForDay.length) return;
-    const reordered = [...sortedForDay];
-    const [moved] = reordered.splice(idx, 1);
-    reordered.splice(newIdx, 0, moved);
-    onDayOrdersChange(prev => ({ ...prev, [dateStr]: reordered.map(h => h.id) }));
+    const visibleIds = entries.map(e => e.habit.id);
+    const vIdx = visibleIds.indexOf(habitId);
+    const targetIdx = vIdx + direction;
+    if (vIdx === -1 || targetIdx < 0 || targetIdx >= visibleIds.length) return;
+    const targetId = visibleIds[targetIdx];
+
+    const fullOrder = sortedForDay.map(h => h.id);
+    const i = fullOrder.indexOf(habitId);
+    const j = fullOrder.indexOf(targetId);
+    [fullOrder[i], fullOrder[j]] = [fullOrder[j], fullOrder[i]];
+    onDayOrdersChange(prev => ({ ...prev, [dateStr]: fullOrder }));
   };
 
   const handleDragStart = (e, habitId) => {
