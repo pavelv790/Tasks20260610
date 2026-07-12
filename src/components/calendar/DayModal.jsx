@@ -366,7 +366,7 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
               habit={habit}
               allTasks={allTasks}
               onSelect={(unlinkedTask) => {
-                const updatedCurrent  = { ...task, makeupForDate: unlinkedTask.date, status: 'makeup' };
+                const updatedCurrent  = { ...task, makeupForDate: unlinkedTask.date };
                 const updatedUnlinked = { ...unlinkedTask, makeupFromDate: dateStr };
                 handleTaskUpdate(updatedCurrent, updatedUnlinked);
                 setShowUnlinkedPicker(false);
