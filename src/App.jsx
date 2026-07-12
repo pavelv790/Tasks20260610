@@ -2,7 +2,7 @@
   import { Calendar, BarChart3, Folder, Archive } from 'lucide-react';
   import { loadAppData, saveAppData, clearAppData } from './utils/storage';
   import { checkMissedTasks, generateTasksForMonth, applyRuleChange } from './utils/taskGenerator';
-  import { generateId } from './utils/habitUtils';
+  import { generateId, hasTaskProgress } from './utils/habitUtils';
   import { formatDate, toMidnight } from './utils/dateUtils';
   import { useNotifications } from './hooks/useNotifications';
 
@@ -17,6 +17,30 @@
   import InstallPrompt    from './components/ui/InstallPrompt';
   import NotificationPermissionModal from './components/ui/NotificationPermissionModal';
   import AlertModal from './components/ui/AlertModal';
+
+// ─────────────────────────────────────────────────────────
+  // Дедупликация на задачи по habitId+date — пази записа с прогрес
+  // ─────────────────────────────────────────────────────────
+  const isTaskMeaningful = (t) =>
+    hasTaskProgress(t) ||
+    (t.status && t.status !== 'pending') ||
+    !!t.note ||
+    !!t.makeupFromDate ||
+    !!t.makeupForDate ||
+    !!t.manuallyReset;
+
+  const dedupeTasksByHabitDate = (tasks) => {
+    const map = new Map();
+    for (const t of tasks) {
+      const key = `${t.habitId}__${t.date}`;
+      const existing = map.get(key);
+      if (!existing) { map.set(key, t); continue; }
+      if (isTaskMeaningful(t) && !isTaskMeaningful(existing)) {
+        map.set(key, t);
+      }
+    }
+    return Array.from(map.values());
+  };
 
   // ─────────────────────────────────────────────────────────
   // Навигационни табове
@@ -103,7 +127,7 @@
 
       if (newTasks.length > 0) {
         setData(prev => {
-          const combined  = [...prev.tasks, ...newTasks];
+          const combined  = dedupeTasksByHabitDate([...prev.tasks, ...newTasks]);
           const withMissed = checkMissedTasks(combined);
           return { ...prev, tasks: withMissed };
         });
@@ -128,7 +152,7 @@
           const note = noteMap.get(t.id);
           return note ? { ...t, note } : t;
         });
-        return { ...prev, tasks: merged };
+        return { ...prev, tasks: dedupeTasksByHabitDate(merged) };
       }
       const updatedMap = new Map(updatedTasks.map(t => [t.id, t]));
       const merged = prev.tasks.map(t => {
@@ -139,7 +163,7 @@
         return note ? { ...updated, note } : updated;
       });
       const newTasks = updatedTasks.filter(t => !prev.tasks.some(p => p.id === t.id));
-      return { ...prev, tasks: [...merged, ...newTasks] };
+      return { ...prev, tasks: dedupeTasksByHabitDate([...merged, ...newTasks]) };
     });
   };
 
