@@ -78,12 +78,52 @@ export const checkMissedTasks = (tasks) => {
 //   4. Makeup задачи с прогрес         → запазват се
 //   5. Генерираме нови задачи за новото правило
 // -------------------------------------------------------
-export const applyRuleChange = (allTasks, habit, newRule, applyFromDate) => {
+export const applyRuleChange = (allTasks, habit, newRule, applyFromDate, futureOnly = false) => {
   const today = toMidnight(new Date());
   const fromDate = applyFromDate ? toMidnight(new Date(applyFromDate)) : today;
 
   const otherTasks = allTasks.filter(t => t.habitId !== habit.id);
   const habitTasks = allTasks.filter(t => t.habitId === habit.id);
+
+  // ── Режим „само бъдещи дати" — миналото (преди fromDate) изобщо не се пипа ──
+  if (futureOnly) {
+    const pastTasks   = habitTasks.filter(t => toMidnight(new Date(t.date)) < fromDate);
+    const futureTasks = habitTasks.filter(t => toMidnight(new Date(t.date)) >= fromDate);
+
+    // За бъдещите дни: пазим completed, останалите изхвърляме (за да не останат стари в разрез с новото правило)
+    const keptFuture = futureTasks.filter(task => isTaskCompleted(task));
+    const cleanedFuture = keptFuture.map(task => {
+      let updated = { ...task };
+      if (updated.makeupForDate)  updated = { ...updated, makeupForDate: null };
+      if (updated.makeupFromDate) updated = { ...updated, makeupFromDate: null, status: 'completed' };
+      return updated;
+    });
+
+    // Генерираме нови задачи, започвайки точно от fromDate (не от 1-во число на месеца)
+    const newTasks = [];
+    let current = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
+    const endDate = new Date(today.getFullYear(), today.getMonth() + 24, 1);
+
+    while (current <= endDate) {
+      const generated = generateTasksForMonth(
+        habit,
+        [newRule],
+        [...pastTasks, ...cleanedFuture, ...newTasks],
+        current.getFullYear(),
+        current.getMonth(),
+        true
+      );
+      // Подсигуряваме се да не пада нищо преди fromDate
+      const filtered = generated.filter(t => toMidnight(new Date(t.date)) >= fromDate);
+      newTasks.push(...filtered);
+      current.setMonth(current.getMonth() + 1);
+    }
+
+    const combined = [...otherTasks, ...pastTasks, ...cleanedFuture, ...newTasks];
+    return checkMissedTasks(combined);
+  }
+
+  // ── Режим „приложи за всички дати" — поведение както досега ──
 
   // Запазваме само completed задачи (partial, missed, pending → изхвърляме)
   // Отработени без връзка (createdBy: manual, без makeupFromDate) → запазваме ако са completed

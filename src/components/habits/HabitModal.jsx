@@ -175,7 +175,7 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
   const confirmSave = (applyToAll) => {
     if (!pendingSave) return;
     const applyFromDate = applyToAll ? pendingSave.newRule.startDate : formatDate(new Date());
-    onSave(pendingSave.newHabit, pendingSave.newRule, applyFromDate);
+    onSave(pendingSave.newHabit, pendingSave.newRule, applyFromDate, !applyToAll);
     setShowWarning(false);
   };
 

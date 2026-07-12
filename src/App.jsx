@@ -151,7 +151,7 @@
     };
 
     // Запазва задача + правило (нов или редактиран)
-    const handleHabitSave = (habit, rule, applyToAll) => {
+    const handleHabitSave = (habit, rule, applyToAll, futureOnly) => {
       setData(prev => {
         // Обновяваме или добавяме задача
         const habitExists = prev.habits.some(h => h.id === habit.id);
@@ -177,7 +177,7 @@
             updatedTasks = applyRuleChange(prev.tasks, habit, rule, rule.startDate);
           } else if (typeof applyToAll === 'string') {
             // Редактиране с променено правило — applyToAll е дата string
-            updatedTasks = applyRuleChange(prev.tasks, habit, rule, applyToAll);
+            updatedTasks = applyRuleChange(prev.tasks, habit, rule, applyToAll, futureOnly);
           } else {
             // Правилото не се е сменило — обновяваме completions/subtasks на съществуващите задачи
             updatedTasks = prev.tasks.map(task => {
