@@ -140,13 +140,15 @@ export const getCalendarDayState = (date, task, rule) => {
   return STATE.C3;
 };
 
-// Обвива резултата с динамичен ring според inRule
+// Обвива резултата с динамичен ring според inRule (само за бъдещи/днешни дни — за минали дни ring-ът е подвеждащ спрямо старо правило)
 export const getCalendarDayStateWithRing = (date, task, rule) => {
-  const check = toMidnight(new Date(date));
+  const check  = toMidnight(new Date(date));
+  const today  = toMidnight(new Date());
+  const isPast = check < today;
   const inRule = rule ? doesDateMatchRule(check, rule) : false;
-  const state = getCalendarDayState(date, task, rule);
+  const state  = getCalendarDayState(date, task, rule);
   if (state.unlinkedRing) return state;
-  return { ...state, ring: inRule };
+  return { ...state, ring: isPast ? false : inRule };
 };
 
 const STATE = {

@@ -78,7 +78,7 @@ export const checkMissedTasks = (tasks) => {
 //   4. Makeup задачи с прогрес         → запазват се
 //   5. Генерираме нови задачи за новото правило
 // -------------------------------------------------------
-export const applyRuleChange = (allTasks, habit, newRule, applyFromDate, futureOnly = false) => {
+export const applyRuleChange = (allTasks, habit, newRule, applyFromDate, futureOnly = false, oldRule = null) => {
   const today = toMidnight(new Date());
   const fromDate = applyFromDate ? toMidnight(new Date(applyFromDate)) : today;
 
@@ -87,8 +87,32 @@ export const applyRuleChange = (allTasks, habit, newRule, applyFromDate, futureO
 
   // ── Режим „само бъдещи дати" — миналото (преди fromDate) изобщо не се пипа ──
   if (futureOnly) {
-    const pastTasks   = habitTasks.filter(t => toMidnight(new Date(t.date)) < fromDate);
+    let pastTasks = habitTasks.filter(t => toMidnight(new Date(t.date)) < fromDate);
     const futureTasks = habitTasks.filter(t => toMidnight(new Date(t.date)) >= fromDate);
+
+    // „Запечатваме" миналото според СТАРОТО правило, преди то да бъде заменено —
+    // за дни без съществуващ task запис, които са пасвали на старото правило.
+    if (oldRule) {
+      const oldRuleStart = toMidnight(new Date(oldRule.startDate));
+      const sealStart = oldRuleStart < fromDate ? oldRuleStart : fromDate;
+      const sealedTasks = [];
+      let d = new Date(sealStart);
+      while (d < fromDate) {
+        const dateStr = formatDate(d);
+        const alreadyExists = pastTasks.some(t => t.date === dateStr) || sealedTasks.some(t => t.date === dateStr);
+        if (!alreadyExists) {
+          if (doesDateMatchRule(toMidnight(d), oldRule)) {
+            sealedTasks.push(createTaskObject(habit, dateStr, oldRule.id));
+          } else {
+            // Ден, който НЕ е пасвал на старото правило — замразяваме го изрично като
+            // "неутрален", за да не бъде погрешно оцветен спрямо новото правило.
+            sealedTasks.push({ ...createTaskObject(habit, dateStr, oldRule.id), manuallyReset: true });
+          }
+        }
+        d.setDate(d.getDate() + 1);
+      }
+      pastTasks = [...pastTasks, ...sealedTasks];
+    }
 
     // За бъдещите дни: пазим completed, останалите изхвърляме (за да не останат стари в разрез с новото правило)
     const keptFuture = futureTasks.filter(task => isTaskCompleted(task));

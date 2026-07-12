@@ -69,8 +69,8 @@ export default function HabitsScreen({ habits, rules, onSave, onDelete, onArchiv
     setDraggedId(null);
   };
 
-  const handleSave = (habit, rule, applyToAll) => {
-    onSave(habit, rule, applyToAll);
+  const handleSave = (habit, rule, applyToAll, futureOnly) => {
+    onSave(habit, rule, applyToAll, futureOnly);
     setShowModal(false);
     setEditing(null);
   };

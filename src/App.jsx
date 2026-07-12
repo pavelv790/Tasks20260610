@@ -165,6 +165,7 @@
           : updatedHabits;
 
         // Обновяваме правилата
+        const oldRule = prev.rules.find(r => r.habitId === habit.id && r.isActive) ?? null;
         const filteredRules = prev.rules.filter(r => r.habitId !== habit.id);
         const updatedRules  = rule ? [...filteredRules, rule] : filteredRules;
 
@@ -177,7 +178,7 @@
             updatedTasks = applyRuleChange(prev.tasks, habit, rule, rule.startDate);
           } else if (typeof applyToAll === 'string') {
             // Редактиране с променено правило — applyToAll е дата string
-            updatedTasks = applyRuleChange(prev.tasks, habit, rule, applyToAll, futureOnly);
+            updatedTasks = applyRuleChange(prev.tasks, habit, rule, applyToAll, futureOnly, oldRule);
           } else {
             // Правилото не се е сменило — обновяваме completions/subtasks на съществуващите задачи
             updatedTasks = prev.tasks.map(task => {
