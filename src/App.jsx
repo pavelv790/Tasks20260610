@@ -377,7 +377,13 @@
         <main className="flex-1 px-4 pb-24 overflow-y-auto">
           <div className="max-w-md mx-auto">
 
-            {activeTab === 'today' && (
+            {!dataLoaded && (
+              <div className="flex items-center justify-center py-20">
+                <div className="text-gray-400 text-sm">Зареждане...</div>
+              </div>
+            )}
+
+            {dataLoaded && activeTab === 'today' && (
               <TodayScreen
                 habits={data.habits}
                 tasks={data.tasks}
@@ -390,7 +396,7 @@
               />
             )}
 
-            {activeTab === 'habits' && (
+            {dataLoaded && activeTab === 'habits' && (
               <HabitsScreen
                 habits={data.habits}
                 rules={data.rules}
@@ -401,7 +407,7 @@
               />
             )}
 
-            {activeTab === 'calendar' && (
+            {dataLoaded && activeTab === 'calendar' && (
               <CalendarScreen
                 habits={data.habits}
                 tasks={data.tasks}
@@ -412,14 +418,14 @@
               />
             )}
 
-            {activeTab === 'statistics' && (
+            {dataLoaded && activeTab === 'statistics' && (
               <StatisticsScreen
                 habits={data.habits}
                 tasks={data.tasks}
                 rules={data.rules}
               />
             )}
-            {activeTab === 'missed' && (
+            {dataLoaded && activeTab === 'missed' && (
               <MissedScreen
                 habits={data.habits}
                 tasks={data.tasks}

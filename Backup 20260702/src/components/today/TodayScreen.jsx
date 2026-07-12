@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Search } from 'lucide-react';
 import { formatDate, formatDisplayDateWithToday, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight } from '../../utils/dateUtils';
 import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerator';
@@ -18,6 +18,7 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
   const [noteValues,     setNoteValues]     = useState({});
   const [modalNote,      setModalNote]      = useState('');
   const [searchQuery,    setSearchQuery]    = useState('');
+  const followingTodayRef = useRef(true);
 
   useEffect(() => {
     if (expandedNote === null) return;
@@ -36,6 +37,22 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [expandedNote, noteValues, tasks]);
+
+  useEffect(() => {
+    const checkDate = () => {
+      if (!followingTodayRef.current) return;
+      const now = new Date();
+      setSelectedDate(prev => (formatDate(prev) === formatDate(now) ? prev : now));
+    };
+    const interval = setInterval(checkDate, 60000);
+    document.addEventListener('visibilitychange', checkDate);
+    window.addEventListener('focus', checkDate);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', checkDate);
+      window.removeEventListener('focus', checkDate);
+    };
+  }, []);
   
   useEffect(() => {
     if (habits.length === 0) return;
@@ -56,9 +73,9 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
     }
   }, [selectedDate, habits.length, rules.length]);
 
-  const goToPrev  = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; });
-  const goToNext  = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; });
-  const goToToday = () => setSelectedDate(new Date());
+  const goToPrev  = () => { followingTodayRef.current = false; setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; }); };
+  const goToNext  = () => { followingTodayRef.current = false; setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; }); };
+  const goToToday = () => { followingTodayRef.current = true; setSelectedDate(new Date()); };
 
   const dateStr      = formatDate(selectedDate);
   const tasksForDate = tasks.filter(t => t.date === dateStr);
@@ -198,8 +215,15 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
           </button>
         </div>
 
-        <button onClick={goToToday} className="w-full py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-lg font-semibold hover:shadow-lg transition-shadow">
-          Днес
+        <button
+          onClick={goToToday}
+          className={`w-full py-2 text-white rounded-lg font-semibold hover:shadow-lg transition-shadow ${
+            isTodaySelected
+              ? 'bg-gradient-to-r from-indigo-500 to-purple-500'
+              : 'bg-gradient-to-r from-orange-500 to-amber-500'
+          }`}
+        >
+          {isTodaySelected ? 'Днес' : '⬅ Отиди на Днес'}
         </button>
 
         <p className="text-xs text-gray-600 text-center mt-2">
@@ -237,7 +261,7 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
                 const isTod = formatDate(day.full) === formatDate(new Date());
                 return (
                   <button key={i}
-                    onClick={() => { setSelectedDate(day.full); setShowDatePicker(false); }}
+                    onClick={() => { followingTodayRef.current = isTod; setSelectedDate(day.full); setShowDatePicker(false); }}
                     className={`aspect-square flex items-center justify-center rounded-lg text-sm font-semibold transition-all
                       ${isSel ? 'bg-indigo-500 text-white ring-2 ring-indigo-300' : ''}
                       ${isTod && !isSel ? 'ring-2 ring-indigo-400' : ''}
