@@ -348,6 +348,7 @@ src/
 | `vite.config.js` | `registerType: 'autoUpdate'` → `registerType: 'prompt'` |
 | `src/components/ui/UpdatePrompt.jsx` | нов компонент — модал „Налична е нова версия“ с бутони „Обнови сега“ / „По-късно“; ползва `useRegisterSW` от `virtual:pwa-register/react`; на всеки час вика `registration.update()` докато приложението е отворено |
 | `src/App.jsx` | импорт + `<UpdatePrompt />` до `<InstallPrompt />` |
+| `src/components/ui/HelpModal.jsx` | нов ред „Обновяване“ в секцията „📲 Инсталиране като приложение“ |
 
 Подробно поведение — виж раздел 8.
 
