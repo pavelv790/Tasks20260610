@@ -48,6 +48,8 @@ export const checkMissedTasks = (tasks) => {
   return tasks.map(task => {
     // Не пипаме вече финализирани задачи
     if (['completed', 'missed'].includes(task.status)) return task;
+    // Всички изпълнения/подзадачи направени → задачата е завършена
+    if (isTaskCompleted(task)) return { ...task, status: 'completed' };
     // Не пипаме ръчно нулирани задачи
     if (task.manuallyReset) return task;
     // Не пипаме makeup задачи

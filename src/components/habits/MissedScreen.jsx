@@ -28,6 +28,7 @@ export default function MissedScreen({ habits, tasks, onNavigateToCalendar }) {
     return tasks
       .filter(t => {
         if (t.status !== 'missed' && t.status !== 'partial') return false;
+        if (isTaskCompleted(t)) return false;
         if (t.makeupFromDate) return false;
         if (t.makeupForDate) {
           const makeupTask = tasks.find(m => m.date === t.makeupForDate && m.habitId === t.habitId);
