@@ -1,12 +1,25 @@
 import { useState, useEffect } from 'react';
-import { X, Download, Upload, Database, Trash2, Info, AlertTriangle } from 'lucide-react';
+import { X, Download, Upload, Database, Trash2, Info, Users } from 'lucide-react';
 import { exportToJson, importFromJson, validateAppData } from '../../utils/exportImport';
 import { saveBackup, listBackups, loadBackup } from '../../utils/storage';
 import ConfirmModal from '../ui/ConfirmModal';
 import ArchiveScreen from '../habits/ArchiveScreen';
 import HelpModal from '../ui/HelpModal';
 
-export default function SettingsModal({ data, onClose, onImport, onClearAll, onUnarchive, onArchivedDelete }) {
+const safeFileName = (s) => (s || 'профил').replace(/[\\/:*?"<>|]+/g, '_').trim() || 'профил';
+
+export default function SettingsModal({
+  data,
+  profiles = [],
+  activeProfileId,
+  activeProfileName = '',
+  onClose,
+  onImport,
+  onClearAll,
+  onExportAllProfiles,
+  onUnarchive,
+  onArchivedDelete,
+}) {
   const [showSuccess,  setShowSuccess]  = useState(null);
   const [confirm,      setConfirm]      = useState(null);
   const [importing,    setImporting]    = useState(false);
@@ -14,13 +27,23 @@ export default function SettingsModal({ data, onClose, onImport, onClearAll, onU
   const [backups, setBackups] = useState([]);
   const [showHelp, setShowHelp] = useState(false);
 
-useEffect(() => {
-  listBackups().then(setBackups);
-}, []);
+  const multiProfile = profiles.length > 1;
 
-  const handleExport = () => {
+useEffect(() => {
+  listBackups(activeProfileId).then(setBackups);
+}, [activeProfileId]);
+
+  const handleExport = (scope = 'profile') => {
     try {
-      exportToJson(data);
+      if (scope === 'all' && onExportAllProfiles) {
+        Promise.resolve(onExportAllProfiles()).then(all => {
+          const today = new Date().toISOString().split('T')[0];
+          exportToJson(all, `Задачи_ВСИЧКИ_профили_${today}.json`);
+        });
+        return;
+      }
+      const today = new Date().toISOString().split('T')[0];
+      exportToJson(data, `Задачи_${safeFileName(activeProfileName)}_${today}.json`);
     } catch (e) {
       console.error(e);
     }
@@ -38,9 +61,12 @@ useEffect(() => {
         setImportError(validationError);
         return;
       }
+      const isAll = imported && imported.schema === 'tasks-multiprofile-v1';
       setConfirm({
         title:        '⚠️ Внимание!',
-        message:      'Това ще замени ВСИЧКИ съществуващи данни!\n\nПродължаваш ли?',
+        message: isAll
+          ? `Това ще замени ВСИЧКИ профили и данните им (${imported.profiles.length} профила)!\n\nПродължаваш ли?`
+          : `Това ще замени данните на текущия профил${activeProfileName ? ` „${activeProfileName}“` : ''}!\n\nПродължаваш ли?`,
         confirmLabel: 'Импортирай',
         onConfirm: () => {
           onImport(imported);
@@ -59,8 +85,8 @@ useEffect(() => {
   };
 
   const handleBackup = async () => {
-  await saveBackup(data);
-  const updated = await listBackups();
+  await saveBackup(data, activeProfileId);
+  const updated = await listBackups(activeProfileId);
   setBackups(updated);
   setShowSuccess('backup');
   setTimeout(() => setShowSuccess(null), 3000);
@@ -69,7 +95,7 @@ useEffect(() => {
   const handleRestore = (key) => {
   setConfirm({
     title:        '⚠️ Потвърждение',
-    message:      'Настоящите данни ще бъдат заменени с backup-а.',
+    message:      `Данните на текущия профил${activeProfileName ? ` „${activeProfileName}“` : ''} ще бъдат заменени с backup-а.`,
     confirmLabel: 'Възстанови',
     onConfirm: async () => {
       const backupData = await loadBackup(key);
@@ -83,20 +109,23 @@ useEffect(() => {
   });
 };
 
-  const handleClearAll = () => {
+  const runClear = (scope) => {
+    const isAll = scope === 'all';
     setConfirm({
       title:        '🔴 КРИТИЧНО ПРЕДУПРЕЖДЕНИЕ!',
-      message:      'Това ще изтрие ВСИЧКИ данни завинаги!\n\nПрепоръчваме да експортираш преди това.',
-      confirmLabel: 'Изтрий всичко',
+      message: isAll
+        ? 'Това ще изтрие ВСИЧКИ профили и данните им завинаги!\n\nПрепоръчваме да експортираш преди това.'
+        : `Това ще изтрие всички данни на профил${activeProfileName ? ` „${activeProfileName}“` : ''} завинаги!\n\nПрепоръчваме да експортираш преди това.`,
+      confirmLabel: 'Изтрий',
       isDestructive: true,
       onConfirm: () => {
         setConfirm({
           title:        '🔴 ПОСЛЕДЕН ШАНС!',
-          message:      'Наистина ли искаш да изтриеш всичко?',
+          message:      isAll ? 'Наистина ли искаш да изтриеш всички профили?' : 'Наистина ли искаш да изтриеш този профил?',
           confirmLabel: 'Да, изтрий',
           isDestructive: true,
           onConfirm: () => {
-            onClearAll();
+            onClearAll(scope);
             setShowSuccess('clear');
             setTimeout(() => { setShowSuccess(null); onClose(); }, 2000);
             setConfirm(null);
@@ -124,12 +153,22 @@ useEffect(() => {
               </button>
             </div>
 
+            {activeProfileName && (
+              <div className="mb-4 p-2 bg-indigo-50 border border-indigo-200 rounded-xl text-sm text-indigo-700 flex items-center gap-2">
+                <Users className="w-4 h-4 flex-shrink-0" />
+                Активен профил: <b>{activeProfileName}</b>
+                <span className="text-indigo-400">
+                  — експортът, backup-ите и „Изтрий данни на профила“ важат за него
+                </span>
+              </div>
+            )}
+
             {showSuccess && (
               <div className="mb-4 p-3 bg-green-100 border-2 border-green-400 rounded-xl text-green-800 font-semibold text-center">
                 {showSuccess === 'import'  && '✅ Данните са импортирани успешно!'}
                 {showSuccess === 'backup'  && '✅ Резервно копие е създадено!'}
                 {showSuccess === 'restore' && '✅ Данните са възстановени!'}
-                {showSuccess === 'clear'   && '✅ Всички данни са изтрити!'}
+                {showSuccess === 'clear'   && '✅ Данните са изтрити!'}
               </div>
             )}
 
@@ -147,10 +186,15 @@ useEffect(() => {
                   <Download className="w-5 h-5 text-green-600" />
                   Експортирай данни
                 </h3>
-                <p className="text-sm text-gray-600 mb-3">Запази всички задачи и правила в JSON файл.</p>
-                <button onClick={handleExport} className="w-full py-3 bg-gradient-to-r from-green-400 to-green-500 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
-                  📥 Свали backup (JSON)
+                <p className="text-sm text-gray-600 mb-3">Запази задачите и правилата в JSON файл.</p>
+                <button onClick={() => handleExport('profile')} className="w-full py-3 bg-gradient-to-r from-green-400 to-green-500 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
+                  📥 {multiProfile ? 'Свали този профил (JSON)' : 'Свали backup (JSON)'}
                 </button>
+                {multiProfile && (
+                  <button onClick={() => handleExport('all')} className="w-full mt-2 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
+                    📦 Свали ВСИЧКИ профили (JSON)
+                  </button>
+                )}
               </div>
 
               {/* Импорт */}
@@ -159,24 +203,13 @@ useEffect(() => {
                   <Upload className="w-5 h-5 text-blue-600" />
                   Импортирай данни
                 </h3>
-                <p className="text-sm text-gray-600 mb-3">Възстанови данни от JSON файл.</p>
+                <p className="text-sm text-gray-600 mb-3">
+                  Възстанови данни от JSON файл. Файл с един профил заменя текущия профил;
+                  файл с всички профили заменя целия набор.
+                </p>
                 <label className="w-full py-3 bg-gradient-to-r from-blue-400 to-blue-500 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow cursor-pointer flex items-center justify-center">
                   📤 Зареди backup (JSON)
                   <input type="file" accept=".json,application/json"
-                  
-                  
-                  
-                  
-                  
-                  
-                  
-                  
-                  
-                  
-                  
-                  
-                  
-                  
                   onChange={handleImport} className="hidden" disabled={importing} />
                 </label>
               </div>
@@ -187,7 +220,9 @@ useEffect(() => {
                   <Database className="w-5 h-5 text-purple-600" />
                   Резервни копия
                 </h3>
-                <p className="text-sm text-gray-600 mb-3">Създай локално резервно копие (пазят се последните 5).</p>
+                <p className="text-sm text-gray-600 mb-3">
+                  Създай локално резервно копие на текущия профил (пазят се последните 5).
+                </p>
                 <button onClick={handleBackup} className="w-full py-3 bg-gradient-to-r from-purple-400 to-purple-500 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
                   💾 Създай backup
                 </button>
@@ -211,12 +246,17 @@ useEffect(() => {
               <div className="bg-gradient-to-r from-red-50 to-red-100 rounded-xl p-4 border-2 border-red-200">
                 <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
                   <Trash2 className="w-5 h-5 text-red-600" />
-                  Изтрий всички данни
+                  Изтрий данни
                 </h3>
-                <p className="text-sm text-gray-600 mb-3">⚠️ Това ще изтрие всички задачи и правила завинаги!</p>
-                <button onClick={handleClearAll} className="w-full py-3 bg-gradient-to-r from-red-400 to-red-500 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
-                  🗑️ Изтрий ВСИЧКО
+                <p className="text-sm text-gray-600 mb-3">⚠️ Изтрива задачи и правила завинаги (двойно потвърждение)!</p>
+                <button onClick={() => runClear('profile')} className="w-full py-3 bg-gradient-to-r from-red-400 to-red-500 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
+                  🗑️ {multiProfile ? 'Изтрий данните на този профил' : 'Изтрий ВСИЧКО'}
                 </button>
+                {multiProfile && (
+                  <button onClick={() => runClear('all')} className="w-full mt-2 py-3 bg-gradient-to-r from-red-500 to-rose-700 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
+                    🗑️ Изтрий ВСИЧКИ профили
+                  </button>
+                )}
               </div>
               {/* Архив */}
               <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-4 border-2 border-gray-200">

@@ -1,3 +1,5 @@
+import { MULTI_PROFILE_SCHEMA } from './storage';
+
 export const exportToJson = (data, filename) => {
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
@@ -9,7 +11,13 @@ export const exportToJson = (data, filename) => {
   a.click();
   URL.revokeObjectURL(url);
 };
-export const validateAppData = (data) => {
+
+// Разпознава export плик с всички профили
+export const isMultiProfileExport = (data) =>
+  !!data && typeof data === 'object' && data.schema === MULTI_PROFILE_SCHEMA && Array.isArray(data.profiles);
+
+// Валидира данните на един профил (плоският формат)
+const validateSingleProfile = (data) => {
   if (!data || typeof data !== 'object') return 'Файлът не съдържа валидни данни.';
   const arrays = ['habits', 'tasks', 'rules', 'archivedHabits'];
   for (const key of arrays) {
@@ -42,6 +50,20 @@ export const validateAppData = (data) => {
     }
   }
   return null;
+};
+
+export const validateAppData = (data) => {
+  if (isMultiProfileExport(data)) {
+    if (data.profiles.length === 0) return 'Файлът с профили е празен.';
+    for (const p of data.profiles) {
+      if (!p || typeof p !== 'object') return 'Данните за профил са повредени.';
+      if (typeof p.name !== 'string') return 'Данните за профил са повредени (липсва име).';
+      const err = validateSingleProfile(p.data);
+      if (err) return `Профил „${p.name || '?'}“: ${err}`;
+    }
+    return null;
+  }
+  return validateSingleProfile(data);
 };
 
 export const importFromJson = (file) => {

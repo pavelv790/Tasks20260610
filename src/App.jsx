@@ -1,6 +1,11 @@
   import { useState, useEffect, useRef } from 'react';
   import { Calendar, BarChart3, Folder, Archive } from 'lucide-react';
-  import { loadAppData, saveAppData, clearAppData } from './utils/storage';
+  import {
+    loadAppData, saveAppData, clearAppData,
+    loadProfilesMeta, setActiveProfile, createProfile, renameProfile,
+    deleteProfile, resetAllProfiles, importAllProfiles, loadAllProfilesExport,
+  } from './utils/storage';
+  import { isMultiProfileExport } from './utils/exportImport';
   import { checkMissedTasks, generateTasksForMonth, applyRuleChange } from './utils/taskGenerator';
   import { generateId, hasTaskProgress } from './utils/habitUtils';
   import { formatDate, toMidnight } from './utils/dateUtils';
@@ -14,6 +19,7 @@
   import ArchiveScreen    from './components/habits/ArchiveScreen';
   import MissedScreen     from './components/habits/MissedScreen';
   import SettingsModal    from './components/settings/SettingsModal';
+  import ProfileSwitcher  from './components/profiles/ProfileSwitcher';
   import InstallPrompt    from './components/ui/InstallPrompt';
   import UpdatePrompt     from './components/ui/UpdatePrompt';
   import NotificationPermissionModal from './components/ui/NotificationPermissionModal';
@@ -58,8 +64,14 @@
   function App() {
     const [activeTab, setActiveTab] = useState('today');
     const [showSettings, setShowSettings] = useState(false);
+    const [showProfiles, setShowProfiles] = useState(false);
     const [showNotificationModal, setShowNotificationModal] = useState(false);
     const [alert, setAlert] = useState(null); // { title, message }
+
+    // ── Профили ──────────────────────────────────────────
+    const [profiles, setProfiles] = useState([]);             // [{ id, name, color, createdAt }]
+    const [activeProfileId, setActiveProfileId] = useState(null);
+    const activeProfile = profiles.find(p => p.id === activeProfileId) ?? null;
 
     // ── Данни ────────────────────────────────────────────
     const [data, setData] = useState({
@@ -69,10 +81,30 @@
     const [dayOrders, setDayOrders] = useState({});
     const [dayOrdersLoaded, setDayOrdersLoaded] = useState(false);
     const [calendarTarget, setCalendarTarget] = useState(null); // { date, habitId }
+
+    // Зарежда данните на даден профил в state и го прави активен.
+    const loadProfileInto = async (id) => {
+      setDataLoaded(false);
+      setDayOrdersLoaded(false);
+      setCalendarTarget(null);
+      await setActiveProfile(id);
+      setActiveProfileId(id);
+      const loaded = await loadAppData(id);
+      const { dayOrders: loadedDayOrders, ...rest } = loaded;
+      // Завършените еднократни задачи не се пренасят в нова сесия
+      setData({ ...rest, todos: (rest.todos ?? []).filter(t => t.status !== 'completed') });
+      setDayOrders(loadedDayOrders ?? {});
+      setDayOrdersLoaded(true);
+      setDataLoaded(true);
+    };
+
     useEffect(() => {
-      loadAppData().then(loaded => {
+      loadProfilesMeta().then(meta => {
+        setProfiles(meta.profiles);
+        setActiveProfileId(meta.activeId);
+        return loadAppData(meta.activeId);
+      }).then(loaded => {
         const { dayOrders: loadedDayOrders, ...rest } = loaded;
-        // Завършените еднократни задачи не се пренасят в нова сесия
         setData({ ...rest, todos: (rest.todos ?? []).filter(t => t.status !== 'completed') });
         setDayOrders(loadedDayOrders ?? {});
         setDayOrdersLoaded(true);
@@ -86,13 +118,14 @@
     // Запазваме при всяка промяна (debounced — чака 1 сек след последната промяна)
     const saveTimerRef = useRef(null);
     useEffect(() => {
-      if (!dataLoaded || !dayOrdersLoaded) return;
+      if (!dataLoaded || !dayOrdersLoaded || !activeProfileId) return;
+      const profileId = activeProfileId;
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
-        saveAppData({ ...data, dayOrders });
+        saveAppData({ ...data, dayOrders }, profileId);
       }, 1000);
       return () => clearTimeout(saveTimerRef.current);
-    }, [data, dayOrders, dataLoaded, dayOrdersLoaded]);
+    }, [data, dayOrders, dataLoaded, dayOrdersLoaded, activeProfileId]);
 
     // Питаме за нотификации при първо зареждане
     useEffect(() => {
@@ -140,7 +173,7 @@
           tasks: checkMissedTasks(prev.tasks),
         }));
       }
-    }, [dataLoaded]); // При зареждане на данните
+    }, [dataLoaded, activeProfileId]); // При зареждане на данните / смяна на профил
 
     // ── Handlers ────────────────────────────────────────
 
@@ -364,24 +397,80 @@
       setData(prev => ({ ...prev, habits: reorderedHabits }));
     };
 
-    // Изчиства всичко
-    const handleClearAll = () => {
-    setData({ habits: [], tasks: [], rules: [], archivedHabits: [], todos: [] });
-    clearAppData();
-  };
+    // ── Профили ─────────────────────────────────────────
 
-    // Импортира данни
-    const handleDataImport = (importedData) => {
+    // Превключване към друг профил (записва текущия веднага)
+    const switchProfile = async (id) => {
+      if (!id || id === activeProfileId) { setShowProfiles(false); return; }
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveAppData({ ...data, dayOrders }, activeProfileId); // flush текущия профил
+      setShowProfiles(false);
+      await loadProfileInto(id);
+    };
+
+    const handleProfileCreate = async (name) => {
+      const { meta } = await createProfile(name);
+      setProfiles(meta.profiles);
+    };
+
+    const handleProfileRename = async (id, name) => {
+      const meta = await renameProfile(id, name);
+      setProfiles(meta.profiles);
+    };
+
+    const handleProfileDelete = async (id) => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      const meta = await deleteProfile(id);
+      setProfiles(meta.profiles);
+      // Ако сме изтрили активния профил — зареждаме новия активен
+      if (!meta.profiles.some(p => p.id === activeProfileId)) {
+        await loadProfileInto(meta.activeId);
+      }
+    };
+
+    // Изчиства данни: scope 'profile' (само активния) или 'all' (всички профили)
+    const handleClearAll = async (scope = 'profile') => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (scope === 'all') {
+        const meta = await resetAllProfiles();
+        if (meta) {
+          setProfiles(meta.profiles);
+          await loadProfileInto(meta.activeId);
+        }
+        return;
+      }
+      await clearAppData(activeProfileId);
+      setData({ habits: [], tasks: [], rules: [], archivedHabits: [], todos: [] });
+      setDayOrders({});
+    };
+
+    // Импортира данни (плосък файл → активния профил; плик → всички профили)
+    const handleDataImport = async (importedData) => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+
+      if (isMultiProfileExport(importedData)) {
+        const meta = await importAllProfiles(importedData);
+        setProfiles(meta.profiles);
+        await loadProfileInto(meta.activeId);
+        return;
+      }
+
       const { dayOrders: importedDayOrders, ...rest } = importedData;
-      setData({
+      const nextData = {
         habits:         rest.habits ?? [],
         tasks:          rest.tasks ?? [],
         rules:          rest.rules ?? [],
         archivedHabits: rest.archivedHabits ?? [],
         todos:          (rest.todos ?? []).filter(t => t.status !== 'completed'),
-      });
+      };
+      setData(nextData);
       setDayOrders(importedDayOrders ?? {});
+      // Незабавен запис в активния профил (debounce ще довтаса, но подсигуряваме)
+      saveAppData({ ...nextData, dayOrders: importedDayOrders ?? {} }, activeProfileId);
     };
+
+    // Export на всички профили (за SettingsModal)
+    const handleExportAllProfiles = () => loadAllProfilesExport();
 
     // Нотификации
     const handleAllowNotifications = () => {
@@ -404,8 +493,22 @@
 
         {/* Header */}
         <header className="bg-white shadow-lg rounded-b-3xl p-6 mb-4">
-          <div className="flex justify-between items-center">
-            <div className="flex-1" />
+          <div className="flex justify-between items-center gap-2">
+            <div className="flex-1 flex justify-start">
+              <button
+                onClick={() => setShowProfiles(true)}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white hover:bg-gray-100 transition-all shadow-md max-w-[42vw]"
+                title="Профили"
+              >
+                <span
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: activeProfile?.color || '#6366f1' }}
+                />
+                <span className="text-sm font-semibold text-gray-700 truncate">
+                  {activeProfile?.name ?? 'Профил'}
+                </span>
+              </button>
+            </div>
             <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 text-center">
               Моите задачи
             </h1>
@@ -523,11 +626,27 @@
         {showSettings && (
           <SettingsModal
             data={{ ...data, dayOrders }}
+            profiles={profiles}
+            activeProfileId={activeProfileId}
+            activeProfileName={activeProfile?.name ?? ''}
             onClose={() => setShowSettings(false)}
             onImport={handleDataImport}
             onClearAll={handleClearAll}
+            onExportAllProfiles={handleExportAllProfiles}
             onUnarchive={handleHabitUnarchive}
             onArchivedDelete={handleArchivedDelete}
+          />
+        )}
+
+        {showProfiles && (
+          <ProfileSwitcher
+            profiles={profiles}
+            activeId={activeProfileId}
+            onSwitch={switchProfile}
+            onCreate={handleProfileCreate}
+            onRename={handleProfileRename}
+            onDelete={handleProfileDelete}
+            onClose={() => setShowProfiles(false)}
           />
         )}
 

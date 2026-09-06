@@ -16,13 +16,13 @@
 | PWA | **vite-plugin-pwa** (service worker, manifest, offline), `registerType: 'prompt'` — обновяването иска потвърждение (виж раздел 8) | `vite.config.js`, `public/sw.js`, `dist/manifest.webmanifest` |
 | Икони | **lucide-react** | навсякъде в компонентите |
 | Ефект „конфети“ | **canvas-confetti** | `src/hooks/useConfetti.js` |
-| Съхранение на данни | **IndexedDB** (една база `habitTrackerDB`, един store `appData`) | `src/utils/storage.js` |
+| Съхранение на данни | **IndexedDB** (една база `habitTrackerDB`, един store `appData`); данните са разделени на **профили** — по ключ `profileData_<id>` за всеки, плюс `profilesMeta` за списъка и активния профил (виж раздел 3.5) | `src/utils/storage.js` |
 | Нотификации | Web Notifications API | `src/hooks/useNotifications.js` |
 | Линтер | ESLint 10 | `eslint.config.js` |
 
 Няма бекенд, няма мрежови заявки за данни. Всичко живее локално в браузъра (IndexedDB).
-Резервните копия също се пазят в същия IndexedDB store с ключове `backup_<timestamp>`
-(последните 5), плюс ръчен export/import на `.json` файл (`src/utils/exportImport.js`).
+Резервните копия са **per-profile** — ключове `backup_<profileId>_<timestamp>` (последните 5
+за всеки профил), плюс ръчен export/import на `.json` файл (`src/utils/exportImport.js`).
 
 ---
 
@@ -32,10 +32,13 @@
 src/
   main.jsx                     — входна точка, монтира <App/>
   App.jsx                      — държи ЦЯЛОТО състояние (data) и всички handler-и;
-                                 навигация между 5-те екрана; auto-запис (debounce 1 сек);
-                                 авто-генериране на задачи при старт; дедупликация на задачи;
+                                 навигация между 5-те екрана; auto-запис (debounce 1 сек,
+                                 записва в АКТИВНИЯ профил); авто-генериране на задачи при
+                                 старт / смяна на профил; дедупликация на задачи;
                                  handler-и за еднократни задачи (handleTodoSave/handleTodoDelete),
-                                 чисти завършените todos при load/import
+                                 чисти завършените todos при load/import;
+                                 профили: state `profiles` + `activeProfileId`, `loadProfileInto`,
+                                 `switchProfile`, handleProfileCreate/Rename/Delete (виж раздел 3.5)
   components/
     today/
       TodayScreen.jsx          — екран „Днес“. Един ОБЩ списък: навици + еднократни задачи,
@@ -68,7 +71,13 @@ src/
                                  „свържи с отработен ден“, бележка
       MakeupPicker.jsx         — избор на дата за наваксване (makeup)
     statistics/StatisticsScreen.jsx — статистики / серии
-    settings/SettingsModal.jsx — backup/restore, import/export, архив, изтриване
+    profiles/
+      ProfileSwitcher.jsx     — модал за профили (икона в хедъра вляво): превключване,
+                                създаване, преименуване (инлайн), изтриване (потвърждение;
+                                бутонът е неактивен при 1 профил). Виж раздел 3.5
+    settings/SettingsModal.jsx — backup/restore, import/export, архив, изтриване.
+                                 Всичко важи за АКТИВНИЯ профил; при > 1 профил показва
+                                 и „Свали / Изтрий ВСИЧКИ профили“
     ui/                        — дребни модали и контроли (Toast, Confirm, Alert, Delete, Help…)
       InstallPrompt.jsx        — банер „Инсталирай приложението“
       UpdatePrompt.jsx         — изскачащ прозорец „Налична е нова версия“ (виж раздел 8)
@@ -107,13 +116,15 @@ src/
 `App.jsx` → `NAV_ITEMS`: `today`, `habits`, `calendar`, `statistics`, `missed`.
 Единственото глобално състояние е в `App.jsx` (`data = { habits, tasks, rules, archivedHabits, todos }`
 + `dayOrders` — вече общ ред за навици и еднократни задачи). Всеки екран получава данните и callback-и надолу през props; промените
-се вдигат нагоре и се записват в IndexedDB с 1-секунден debounce.
+се вдигат нагоре и се записват в IndexedDB с 1-секунден debounce **в активния профил**.
+Профилите (`profiles`, `activeProfileId`) също живеят в `App.jsx` — виж раздел 3.5.
 
 ---
 
 ## 3. Модел на данните
 
-Всичко е в един обект, записан под ключ `main` в IndexedDB:
+Данните на един профил са в един обект, записан под ключ `profileData_<profileId>` в
+IndexedDB (историческо: до 2026-09-07 имаше един ключ `main` — виж раздел 3.5 и раздел 7):
 
 ```js
 {
@@ -239,6 +250,53 @@ src/
   listener + `data-note-container`/`data-note-toggle`) **и** поле „📝 Бележка“ в прозореца
   за действия (`commitModalNote` записва при затваряне / „Редактирай“ / отмятане). И двете
   пишат `todo.note`.
+
+### 3.5 Профили — виж `storage.js` + `App.jsx` + `components/profiles/ProfileSwitcher.jsx`
+
+Един потребител, различни независими контексти (напр. „Личен“ / „Работа“). Без парола/PIN.
+
+**IndexedDB ключове (store `appData`):**
+
+| Ключ | Съдържание |
+|------|-----------|
+| `profilesMeta` | `{ activeId, profiles: [{ id, name, color, createdAt }] }` |
+| `profileData_<id>` | обектът с данни от раздел 3 (habits/tasks/rules/archivedHabits/todos/dayOrders) |
+| `backup_<id>_<ts>` | локално резервно копие на профил `<id>` (последните 5 на профил) |
+| `main` | **стар** единствен запис — оставя се недокоснат след миграцията (fallback) |
+| `backup_<ts>` | **стари** backup-и — оставят се; копирани веднъж към активния профил |
+
+`id` = `p_<Date.now()>_<random>`. `color` се взима от `PROFILE_COLORS` (пръв свободен).
+
+**Миграция (`storage.js` → `ensureInit` / `runInit`):** пуска се ТОЧНО веднъж за живота на
+страницата (кеширан промис `initPromise` — иначе паралелните `loadProfilesMeta` +
+`loadAppData` при монтиране се състезават и създават по няколко профила). Ако няма
+`profilesMeta`: чете стария `main`, създава профил „Основен“ с неговото съдържание (или
+празен), копира старите `backup_<ts>` към `backup_<новияId>_<ts>`, записва `profilesMeta`.
+Старият `main` и старите backup-и **не се трият**.
+
+**API на `storage.js`** (всички приемат по избор `profileId`, по подразбиране активния):
+`loadProfilesMeta`, `setActiveProfile`, `createProfile`, `renameProfile`, `deleteProfile`
+(не позволява 0 профила; трие данните + backup-ите на профила), `loadAppData`, `saveAppData`,
+`clearAppData` (нулира данните, профилът остава), `resetAllProfiles` (трие всичко, оставя
+един празен „Основен“), `loadAllProfilesExport` / `importAllProfiles` (виж раздел 10),
+`saveBackup` / `listBackups` / `loadBackup`.
+
+**`App.jsx`:**
+- `loadProfileInto(id)` — `dataLoaded=false` → `setActiveProfile` → `loadAppData` → зарежда в
+  state → `dataLoaded=true`. Ползва се от `switchProfile`, изтриване на активния профил,
+  import на плик и „Изтрий всички профили“.
+- `switchProfile(id)` — прекъсва висящия save-таймер, **записва текущия профил веднага**
+  (`saveAppData(..., activeProfileId)`), после `loadProfileInto(id)`. Така недовършеният
+  1-сек debounce не отива в грешния профил.
+- Save-ефектът пази `profileId = activeProfileId` в момента на планиране и записва точно в
+  него; докато `!dataLoaded` (по време на смяна) не записва нищо.
+- Ефектът за авто-генериране/`checkMissedTasks` зависи от `[dataLoaded, activeProfileId]` —
+  пуска се пак за новия профил.
+- Хедърът има чип вляво (цветна точка + име) → отваря `ProfileSwitcher`.
+
+**Изолация:** профилите не споделят нищо в IndexedDB. Habit id-тата са случайни, така че
+`localStorage` ключовете за дедуп на нотификации (`lastNotif_<habitId>_<date>`) не се засичат
+между профили. `notificationsDeclined` е глобален (по избор).
 
 ---
 
@@ -406,6 +464,37 @@ src/
 ---
 
 ## 7. История на поправките
+
+### 2026-09-07 — Профили (различни независими контексти)
+
+**Какво:** нова възможност за няколко профила на един потребител (напр. „Личен“ /
+„Работа“) — всеки със собствени задачи, календар, статистика и резервни копия. Без
+парола/PIN. Превключване от чип в хедъра вляво.
+
+**Подход:** промяната е само в слоя „зареждане/запис“ — екраните не се пипат, защото
+цялото състояние вече минаваше през `App.jsx` + props. Данните на всеки профил са под
+отделен IndexedDB ключ `profileData_<id>`; списъкът и активният профил — под `profilesMeta`.
+Пълен модел — виж раздел 3.5; формати за export/import — раздел 10.
+
+| Файл | Промяна |
+|------|---------|
+| `src/utils/storage.js` | пренаписан: `profilesMeta` + `profileData_<id>` + `backup_<id>_<ts>`; кеширани `getDB()` и `ensureInit()` (миграция веднъж); ново API — `loadProfilesMeta`, `setActiveProfile`, `createProfile`, `renameProfile`, `deleteProfile`, `clearAppData(profileId)`, `resetAllProfiles`, `loadAllProfilesExport`, `importAllProfiles`; `loadAppData`/`saveAppData`/`saveBackup`/`listBackups` приемат `profileId` |
+| `src/components/profiles/ProfileSwitcher.jsx` | **нов** — модал за профили: превключване, „Нов профил“, инлайн преименуване, изтриване с потвърждение (неактивно при 1 профил) |
+| `src/App.jsx` | state `profiles` + `activeProfileId`; `loadProfileInto`, `switchProfile` (flush на текущия преди смяна), `handleProfileCreate/Rename/Delete`; save-ефектът и ефектът за генериране вече зависят от `activeProfileId`; `handleClearAll(scope)` и `handleDataImport` (плосък файл → активния профил; плик → всички); чип за профил в хедъра |
+| `src/utils/exportImport.js` | `isMultiProfileExport`; `validateAppData` приема и плика с всички профили (валидира всеки `profiles[i].data`) |
+| `src/components/settings/SettingsModal.jsx` | показва активния профил; backup-ите и export/clear са per-profile; при > 1 профил — и „Свали / Изтрий ВСИЧКИ профили“ |
+| `src/components/ui/HelpModal.jsx` | нова секция „👤 Профили“ |
+
+**Миграция:** при първо зареждане без `profilesMeta` старият единствен запис `main` се
+пренася в профил „Основен“, старите backup-и се копират към него. Старият `main` и
+старите backup-и **не се трият** (fallback). Пуска се точно веднъж (кеширан промис —
+иначе паралелните заявки при монтиране създаваха дублирани профили).
+
+**Проверка:** `npm run build` минава. `npm run lint` — без нови предупреждения (само
+отпреди съществуващите в други файлове). Ръчно изпитано в браузър: миграция от `main`,
+чиста нова инсталация, създаване/преименуване/изтриване на профил, превключване +
+изолация на данните, презареждане (пази активния профил), per-profile backup списък,
+export на един профил (плосък) и на всички (плик).
 
 ### 2026-09-07 — Еднократните задачи слети в общия списък на „Днес“
 
@@ -594,6 +683,8 @@ app switcher-а, особено на iPhone) и го отвори пак 1–2 �
 | Архив (списък, връщане, изтриване) | `components/habits/ArchiveScreen.jsx` (рендва се в `SettingsModal.jsx`) |
 | Статистика / серии | `components/statistics/StatisticsScreen.jsx` |
 | Настройки / export / import / backup | `components/settings/SettingsModal.jsx`, `utils/exportImport.js`, `utils/storage.js` |
+| Профили (превключване, CRUD, миграция) | `utils/storage.js`, `App.jsx`, `components/profiles/ProfileSwitcher.jsx` |
+| Export/import на всички профили (плик) | `utils/storage.js` (`loadAllProfilesExport`/`importAllProfiles`), `utils/exportImport.js` (`isMultiProfileExport`, `validateAppData`), `components/settings/SettingsModal.jsx` |
 | Поле за въвеждане на дата | `components/ui/DateInput.jsx` |
 | Dropdown с търсене (Календар / Статистика) | `components/ui/SearchableSelect.jsx` |
 | Инлайн търсене над списък (Задачи / Днес / Пропуснати) | съответния екран (`HabitsScreen` / `TodayScreen` / `MissedScreen`) |
@@ -601,3 +692,36 @@ app switcher-а, особено на iPhone) и го отвори пак 1–2 �
 | Помощно ръководство за потребителя | `components/ui/HelpModal.jsx` |
 | Нотификации (планиране, dedup) | `hooks/useNotifications.js` |
 | PWA / service worker / обновяване | `vite.config.js`, `public/sw.js`, `components/ui/UpdatePrompt.jsx` |
+
+---
+
+## 10. Export / import формати
+
+Има два формата на `.json` файла (`utils/exportImport.js` ги различава):
+
+### 10.1 Един профил (плосък — историческият формат)
+```js
+{ habits, tasks, rules, archivedHabits, todos, dayOrders }
+```
+- Създава се от „Свали този профил (JSON)“ (или „Свали backup“ при само 1 профил).
+- При import **заменя данните на активния профил**. Старите файлове отпреди профилите
+  се четат без промяна.
+- `validateAppData` проверява масивите + типовете на ключовите полета.
+
+### 10.2 Всички профили (плик)
+```js
+{
+  schema: "tasks-multiprofile-v1",
+  exportedAt: <ms>,
+  activeId: "<id>",
+  profiles: [ { id, name, color, createdAt, data: { habits, ... , dayOrders } }, ... ]
+}
+```
+- Създава се от „Свали ВСИЧКИ профили (JSON)“ (видимо само при > 1 профил).
+- При import **заменя целия набор профили** (`importAllProfiles` трие всички
+  `profileData_*` / `backup_*` / `profilesMeta` и ги пресъздава от плика).
+- `isMultiProfileExport(data)` = `data.schema === "tasks-multiprofile-v1" && Array.isArray(data.profiles)`.
+- `validateAppData` валидира всеки `profiles[i].data` със същите проверки като 10.1.
+
+Локалните backup-и (`saveBackup`) винаги пазят **плоския** формат (един профил) и се
+възстановяват в активния профил.
