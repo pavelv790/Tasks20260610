@@ -33,6 +33,14 @@ export const validateAppData = (data) => {
   if (data.dayOrders !== undefined && (typeof data.dayOrders !== 'object' || Array.isArray(data.dayOrders))) {
     return 'Данните за подредбата по дни (dayOrders) са повредени.';
   }
+  if (data.todos !== undefined) {
+    if (!Array.isArray(data.todos)) return 'Списъкът с еднократни задачи (todos) е повреден.';
+    for (const t of data.todos) {
+      if (!t || typeof t.id !== 'string' || typeof t.name !== 'string') {
+        return 'Данните за еднократните задачи (todos) са повредени.';
+      }
+    }
+  }
   return null;
 };
 

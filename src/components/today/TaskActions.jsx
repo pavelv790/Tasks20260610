@@ -9,8 +9,10 @@ import { ORDINAL_SUFFIX } from '../../utils/constants';
 //   task        — обектът на задачата
 //   onUpdate    — callback с обновената задача
 //   isMakeup    — true ако е makeup ден (без бутон "Пропусни")
+//   hideSkip    — скрива бутона "Пропусни" (напр. за еднократни задачи)
+//   onDelete    — ако е подаден, показва бутон "Изтрий задачата"
 // ─────────────────────────────────────────────────────────
-export default function TaskActions({ task, onUpdate, isMakeup = false }) {
+export default function TaskActions({ task, onUpdate, isMakeup = false, hideSkip = false, onDelete = null }) {
   const { fireConfetti } = useConfetti();
 
   const wasCompleted = () => task.status === 'completed';
@@ -217,9 +219,9 @@ export default function TaskActions({ task, onUpdate, isMakeup = false }) {
         </button>
       )}
       
-      {/* ── Пропусни / Нулирай ── */}
+      {/* ── Пропусни / Нулирай / Изтрий ── */}
       <div className="space-y-2 pt-4 border-t border-gray-200">
-        {!isMakeup && !isMissed && (
+        {!isMakeup && !isMissed && !hideSkip && (
           <button onClick={markMissed} className="w-full py-3 bg-gradient-to-r from-red-400 to-red-500 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
             ✗ Пропусни
           </button>
@@ -227,6 +229,11 @@ export default function TaskActions({ task, onUpdate, isMakeup = false }) {
         {!isMakeup && <button onClick={reset} className="w-full py-3 bg-gradient-to-r from-gray-400 to-gray-500 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
           🔄 Нулирай задачата
         </button>}
+        {onDelete && (
+          <button onClick={onDelete} className="w-full py-3 bg-gradient-to-r from-rose-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
+            🗑 Изтрий задачата
+          </button>
+        )}
       </div>
     </div>
   );

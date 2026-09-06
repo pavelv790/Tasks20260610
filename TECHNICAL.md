@@ -38,8 +38,13 @@ src/
     today/
       TodayScreen.jsx          — екран „Днес“ (задачи за избран ден, drag&drop подредба, бележки)
       TaskActions.jsx          — общата логика за отмятане на задача (completions / subtasks /
-                                 просто „изпълнено“ / „пропусни“ / „нулирай“). Ползва се и в
-                                 „Днес“, и в календара.
+                                 просто „изпълнено“ / „пропусни“ / „нулирай“). Ползва се в
+                                 „Днес“, календара и при еднократните задачи.
+                                 Props `hideSkip` (крие „Пропусни“) и `onDelete` (бутон „Изтрий“).
+      TodoList.jsx             — секция „Еднократни задачи“ в „Днес“ (само за днешния ден):
+                                 списък за отмятане, анимация при изпълнение + toast „Върни“
+      TodoModal.jsx            — създаване / редакция на еднократна задача (име, описание,
+                                 брой изпълнения, подзадачи) — без правило/напомняне/цвят
     habits/
       HabitsScreen.jsx         — списък със задачи (навици), пренареждане
       HabitModal.jsx           — създаване/редакция на задача + правило за повторение
@@ -89,6 +94,7 @@ src/
   tasks:  [ Task,  ... ],
   rules:  [ Rule,  ... ],
   archivedHabits: [ { habit, rule, tasks, archivedAt }, ... ],
+  todos:  [ Todo,  ... ],   // еднократни задачи (виж 3.4)
   dayOrders: { "YYYY-MM-DD": [habitId, habitId, ...] }   // ръчна подредба за конкретен ден
 }
 ```
@@ -157,6 +163,40 @@ src/
 **Важно:** `status` е записан низ, но „истината“ за прогреса е в масивите
 `completions` / `subtasks`. На много места UI-ът смята статуса динамично
 (`getEffectiveStatus`, `calendarStates.js`), но не навсякъде — виж раздел 5.
+
+### 3.4 Todo (еднократна задача) — виж `habitUtils.createTodoObject`
+```js
+{
+  id: "todo_...",
+  name: string,
+  description: string | null,
+  timesPerDay: number,           // ≥ 1
+  subtasksCount: number,         // ≥ 0
+  subtaskNames: string[],
+  completions: [ { index, completed, timestamp }, ... ],  // само ако timesPerDay > 1
+  subtasks:    [ { index, name, completed, timestamp }, ... ], // само ако subtasksCount > 0
+  status: "pending" | "partial" | "completed",
+  note: string,
+  createdAt: number,             // Date.now()
+  createdDate: "YYYY-MM-DD",     // само информативно (за сортиране); НЕ е насрочване
+  completedAt: string | null
+}
+```
+- **Напълно независими** от `habits` / `rules` / `tasks`. Не влизат в календара,
+  статистиката, „Пропуснати“ или архива.
+- Живеят в `data.todos`, пазят се в същия IndexedDB запис, влизат в JSON export и backup-и.
+- Нямат дата → показват се в екран „Днес“ **само когато е избран днешният ден**
+  (`isTodaySelected` в `TodayScreen`) и остават там всеки следващ ден, докато не бъдат
+  отметнати или изтрити („пренасяне“).
+- Отмятането ползва същия `TaskActions` (с `hideSkip` — без „Пропусни“; и `onDelete`).
+- При пълно изпълнение: `status:"completed"`, конфети, ~1.15 s анимация „изчезва“
+  (`animate-todo-done` в `index.css`), после `Toast` „Изпълнена“ с бутон „Върни“ (5 s).
+  „Върни“ → връща snapshot-а отпреди последното отмятане (`onSave`); изтичане на toast-а
+  или „✕“ → `onDelete` (твърдо триене).
+- Завършените todo записи се изчистват при следващо зареждане на приложението
+  (`App.jsx`: `todos.filter(t => t.status !== 'completed')` при load и при import).
+- Редакция (`TodoModal` в edit режим): `buildTodoArrays` преизгражда масивите, като пази
+  наличните отметки; `computeTodoStatus` преизчислява статуса.
 
 ---
 
@@ -304,6 +344,37 @@ src/
 ---
 
 ## 7. История на поправките
+
+### 2026-09-06 — Еднократни задачи (todos)
+
+**Какво:** нова възможност за създаване на еднократни задачи („списък за отмятане“ за
+деня), които изчезват след изпълнение. Създават се от екран „Днес“ с бутон
+„Създай еднократна задача“.
+
+**Подход:** отделна колекция `data.todos`, независима от `habits`/`rules`/`tasks` —
+за да не влиза в календар, статистика, „Пропуснати“ и архив и да не се пипа сложната
+rule логика. Пълен модел — виж раздел 3.4.
+
+| Файл | Промяна |
+|------|---------|
+| `src/utils/storage.js` | `todos: []` в `EMPTY_DATA` и в мапинга при `loadAppData` |
+| `src/utils/exportImport.js` | `validateAppData` валидира `todos` по избор (обратно съвместимо) |
+| `src/utils/habitUtils.js` | нови: `createTodoObject`, `buildTodoArrays`, `computeTodoStatus`; импорт на `formatDate` |
+| `src/App.jsx` | `todos` в state; `handleTodoSave` (upsert по id) / `handleTodoDelete`; чисти `completed` todos при load и import; включва `todos` в clear/import; подава props към `TodayScreen` |
+| `src/components/today/TaskActions.jsx` | нови props `hideSkip` (крие „Пропусни“) и `onDelete` (бутон „Изтрий задачата“) — обратно съвместими |
+| `src/components/today/TodayScreen.jsx` | рендва `<TodoList>` над списъка с повтарящи се задачи, само когато `isTodaySelected`; търсачката филтрира и todos |
+| `src/components/today/TodoList.jsx` | **нов** — секцията, прозорецът за действия (`TaskActions`), анимация при изпълнение + `Toast` „Върни“ |
+| `src/components/today/TodoModal.jsx` | **нов** — създаване/редакция |
+| `src/index.css` | нов keyframe `animate-todo-done` |
+| `src/components/ui/HelpModal.jsx` | нова секция „📝 Еднократни задачи“ |
+
+**Бележки:**
+- „Изтрий задачата“ при todo е без потвърждение (за разлика от навиците) — еднократната
+  задача няма история за пазене.
+- Undo прозорецът е 5 s; анимацията „изчезва“ ~1.15 s.
+
+**Проверка:** `npm run build` минава. `npm run lint` — без нови предупреждения в
+засегнатите файлове (остават само отпреди съществуващите в други файлове).
 
 ### 2026-09-01 — Многократна задача остава в „Пропуснати“ след пълно завършване
 

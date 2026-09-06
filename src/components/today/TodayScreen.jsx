@@ -5,8 +5,9 @@ import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerat
 import { getEffectiveStatus, getProgressText, isTaskCompleted } from '../../utils/habitUtils';
 import { getCalendarDayState } from '../../utils/calendarStates';
 import TaskActions from './TaskActions';
+import TodoList from './TodoList';
 
-export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTaskNoteUpdate, onHabitsReorder, dayOrders, onDayOrdersChange }) {
+export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksUpdate, onTaskNoteUpdate, onHabitsReorder, onTodoSave, onTodoDelete, dayOrders, onDayOrdersChange }) {
   const [selectedDate,   setSelectedDate]   = useState(new Date());
   const [showDayModal,   setShowDayModal]   = useState(false);
   const [selectedEntry,  setSelectedEntry]  = useState(null);
@@ -292,6 +293,15 @@ export default function TodayScreen({ habits, tasks, rules, onTasksUpdate, onTas
           className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-400 focus:outline-none bg-white"
         />
       </div>
+
+      {isTodaySelected && (
+        <TodoList
+          todos={todos}
+          onSave={onTodoSave}
+          onDelete={onTodoDelete}
+          searchQuery={searchQuery}
+        />
+      )}
 
       <div className="space-y-2">
         {entries.length === 0 ? (

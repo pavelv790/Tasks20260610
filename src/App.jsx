@@ -63,7 +63,7 @@
 
     // ── Данни ────────────────────────────────────────────
     const [data, setData] = useState({
-    habits: [], tasks: [], rules: [], archivedHabits: []
+    habits: [], tasks: [], rules: [], archivedHabits: [], todos: []
   });
   const [dataLoaded, setDataLoaded] = useState(false);
     const [dayOrders, setDayOrders] = useState({});
@@ -72,7 +72,8 @@
     useEffect(() => {
       loadAppData().then(loaded => {
         const { dayOrders: loadedDayOrders, ...rest } = loaded;
-        setData(rest);
+        // Завършените еднократни задачи не се пренасят в нова сесия
+        setData({ ...rest, todos: (rest.todos ?? []).filter(t => t.status !== 'completed') });
         setDayOrders(loadedDayOrders ?? {});
         setDayOrdersLoaded(true);
         setDataLoaded(true);
@@ -167,6 +168,23 @@
       return { ...prev, tasks: dedupeTasksByHabitDate([...merged, ...newTasks]) };
     });
   };
+
+    // ── Еднократни задачи (todos) ───────────────────────
+    const handleTodoSave = (todo) => {
+      setData(prev => {
+        const exists = prev.todos.some(t => t.id === todo.id);
+        return {
+          ...prev,
+          todos: exists
+            ? prev.todos.map(t => (t.id === todo.id ? todo : t))
+            : [...prev.todos, todo],
+        };
+      });
+    };
+
+    const handleTodoDelete = (todoId) => {
+      setData(prev => ({ ...prev, todos: prev.todos.filter(t => t.id !== todoId) }));
+    };
 
     const handleTaskNoteUpdate = (taskId, note) => {
       setData(prev => ({
@@ -348,7 +366,7 @@
 
     // Изчиства всичко
     const handleClearAll = () => {
-    setData({ habits: [], tasks: [], rules: [], archivedHabits: [] });
+    setData({ habits: [], tasks: [], rules: [], archivedHabits: [], todos: [] });
     clearAppData();
   };
 
@@ -360,6 +378,7 @@
         tasks:          rest.tasks ?? [],
         rules:          rest.rules ?? [],
         archivedHabits: rest.archivedHabits ?? [],
+        todos:          (rest.todos ?? []).filter(t => t.status !== 'completed'),
       });
       setDayOrders(importedDayOrders ?? {});
     };
@@ -421,9 +440,12 @@
                 habits={data.habits}
                 tasks={data.tasks}
                 rules={data.rules}
+                todos={data.todos}
                 onTasksUpdate={handleTasksUpdate}
                 onTaskNoteUpdate={handleTaskNoteUpdate}
                 onHabitsReorder={handleHabitsReorder}
+                onTodoSave={handleTodoSave}
+                onTodoDelete={handleTodoDelete}
                 dayOrders={dayOrders}
                 onDayOrdersChange={setDayOrders}
               />

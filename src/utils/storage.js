@@ -13,6 +13,7 @@ const EMPTY_DATA = {
   tasks:          [],
   rules:          [],
   archivedHabits: [],
+  todos:          [],
   dayOrders:      {},
 };
 
@@ -44,6 +45,7 @@ export const loadAppData = async () => {
           tasks:          parsed.tasks          ?? [],
           rules:          parsed.rules          ?? [],
           archivedHabits: parsed.archivedHabits ?? [],
+          todos:          parsed.todos          ?? [],
           dayOrders:      parsed.dayOrders      ?? {},
         });
       };

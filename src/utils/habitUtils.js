@@ -3,6 +3,8 @@
 // Отговорност: помощни функции за статус на задачи
 // ============================================================
 
+import { formatDate } from './dateUtils';
+
 // Проверява дали задача е напълно завършена
 export const isTaskCompleted = (task) => {
   if (!task) return false;
@@ -96,6 +98,72 @@ export const createTaskObject = (habit, dateStr, ruleId) => ({
   createdBy: 'rule',
   ruleId: ruleId ?? null,
 });
+
+// ─────────────────────────────────────────────────────────
+// Еднократни задачи (todos) — независими от навици/правила.
+// Ползват същите completions/subtasks масиви, за да работи TaskActions.
+// ─────────────────────────────────────────────────────────
+
+// Строи масивите completions/subtasks за дадени параметри,
+// като пази наличните отметки където е възможно (за редакция).
+export const buildTodoArrays = ({ timesPerDay, subtasksCount, subtaskNames = [] }, prev = {}) => {
+  const prevCompletions = prev.completions ?? [];
+  const prevSubtasks    = prev.subtasks ?? [];
+
+  const completions = timesPerDay > 1
+    ? Array.from({ length: timesPerDay }, (_, i) => ({
+        index: i + 1,
+        completed: prevCompletions[i]?.completed ?? false,
+        timestamp: prevCompletions[i]?.timestamp ?? null,
+      }))
+    : [];
+
+  const subtasks = subtasksCount > 0
+    ? Array.from({ length: subtasksCount }, (_, i) => ({
+        index: i + 1,
+        name: subtaskNames[i] || `Подзадача ${i + 1}`,
+        completed: prevSubtasks[i]?.completed ?? false,
+        timestamp: prevSubtasks[i]?.timestamp ?? null,
+      }))
+    : [];
+
+  return { completions, subtasks };
+};
+
+// Изчислява статуса на todo от неговите масиви
+export const computeTodoStatus = (todo) => {
+  if (todo.completions?.length > 0) {
+    const allDone  = todo.completions.every(c => c.completed);
+    const someDone = todo.completions.some(c => c.completed) || (todo.subtasks?.some(s => s.completed) ?? false);
+    return allDone ? 'completed' : someDone ? 'partial' : 'pending';
+  }
+  if (todo.subtasks?.length > 0) {
+    const allDone  = todo.subtasks.every(s => s.completed);
+    const someDone = todo.subtasks.some(s => s.completed);
+    return allDone ? 'completed' : someDone ? 'partial' : 'pending';
+  }
+  return todo.status === 'completed' ? 'completed' : 'pending';
+};
+
+// Създава нов todo обект
+export const createTodoObject = ({ name, description, timesPerDay = 1, subtasksCount = 0, subtaskNames = [] }) => {
+  const { completions, subtasks } = buildTodoArrays({ timesPerDay, subtasksCount, subtaskNames });
+  return {
+    id: generateId('todo'),
+    name: name.trim(),
+    description: description?.trim() || null,
+    timesPerDay: Math.max(1, timesPerDay),
+    subtasksCount: Math.max(0, subtasksCount),
+    subtaskNames,
+    completions,
+    subtasks,
+    status: 'pending',
+    note: '',
+    createdAt: Date.now(),
+    createdDate: formatDate(new Date()),
+    completedAt: null,
+  };
+};
 
 // Нулира прогреса на задача
 export const resetTaskProgress = (task) => ({
