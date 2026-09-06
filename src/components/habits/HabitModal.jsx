@@ -5,6 +5,7 @@ import { COLORS, WEEKDAY_COLORS } from '../../utils/constants';
 import { WEEKDAY_NAMES_BG } from '../../utils/dateUtils';
 import { formatDate } from '../../utils/dateUtils';
 import DateInput from '../ui/DateInput';
+import SubtaskEditor from '../ui/SubtaskEditor';
 
 // ─────────────────────────────────────────────────────────
 // Помощни функции (извън компонента за чистота)
@@ -48,7 +49,6 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
   const [name,          setName]          = useState(habit?.name          ?? '');
   const [isDefault,     setIsDefault]     = useState(habit?.isDefault     ?? false);
   const [timesPerDay,   setTimesPerDay]   = useState(habit?.timesPerDay   ?? 1);
-  const [subtasksCount, setSubtasksCount] = useState(habit?.subtasksCount ?? 0);
   const [subtaskNames,  setSubtaskNames]  = useState(habit?.subtaskNames  ?? []);
   const [reminderTime,  setReminderTime]  = useState(habit?.reminderTime  ?? null);
   const [color,         setColor]         = useState(habit?.color ?? COLORS[Math.floor(Math.random() * COLORS.length)]);
@@ -89,14 +89,6 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
   };
 
   // ── Подзадачи ────────────────────────────────────────
-  const handleSubtasksCountChange = (val) => {
-    const count = Math.max(0, parseInt(val) || 0);
-    setSubtasksCount(count);
-    const names = [...subtaskNames];
-    while (names.length < count) names.push('');
-    setSubtaskNames(names.slice(0, count));
-  };
-
   const toggleComplexDay = (idx) => {
     setComplexDays(prev =>
       prev.includes(idx) ? prev.filter(d => d !== idx) : [...prev, idx]
@@ -113,7 +105,7 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
       color,
       isDefault,
       timesPerDay:  Math.max(1, parseInt(timesPerDay) || 1),
-      subtasksCount: Math.max(0, parseInt(subtasksCount) || 0),
+      subtasksCount: subtaskNames.length,
       subtaskNames,
       reminderTime: reminderTime || null,
       description:  description.trim() || null,
@@ -257,35 +249,8 @@ onFocus={e => e.target.select()}
 
             {/* Подзадачи */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Подзадачи (0 = без подзадачи)</label>
-              <input
-                type="number" min="0"
-                value={subtasksCount}
-                onChange={e => handleSubtasksCountChange(e.target.value)}
-onFocus={e => e.target.select()}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-400 focus:outline-none"
-              />
-              {subtasksCount > 0 && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs text-gray-600">Имена на подзадачите (незадължително):</p>
-                  {Array.from({ length: subtasksCount }, (_, i) => (
-                    <input
-                      key={i}
-                      type="text"
-                      value={subtaskNames[i] ?? ''}
-                      onChange={e => {
-                        const names = [...subtaskNames];
-                        names[i] = e.target.value;
-                        setSubtaskNames(names);
-                      }}
-                      placeholder={`Подзадача ${i + 1}`}
-                      maxLength={50}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-indigo-400 focus:outline-none text-sm"
-                    />
-                  ))}
-                  <p className="text-gray-400 text-xs">Ако оставиш празно, ще се номерира автоматично</p>
-                </div>
-              )}
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Подзадачи</label>
+              <SubtaskEditor names={subtaskNames} onChange={setSubtaskNames} />
             </div>
 
             {/* Напомняне */}

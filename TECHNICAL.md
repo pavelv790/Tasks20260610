@@ -1,7 +1,7 @@
 # TECHNICAL.md — Техническо описание на проекта „Моите задачи“
 
 > Този документ описва само това, което реално се вижда в кода в тази папка
-> (`C:\Users\Dell\Downloads\Projects AI\Tasks20260701`). Няма предположения за
+> (`C:\Users\Dell\Downloads\Projects AI\Tasks20260901`). Няма предположения за
 > външни системи.
 
 ---
@@ -33,7 +33,9 @@ src/
   main.jsx                     — входна точка, монтира <App/>
   App.jsx                      — държи ЦЯЛОТО състояние (data) и всички handler-и;
                                  навигация между 5-те екрана; auto-запис (debounce 1 сек);
-                                 авто-генериране на задачи при старт; дедупликация на задачи
+                                 авто-генериране на задачи при старт; дедупликация на задачи;
+                                 handler-и за еднократни задачи (handleTodoSave/handleTodoDelete),
+                                 чисти завършените todos при load/import
   components/
     today/
       TodayScreen.jsx          — екран „Днес“ (задачи за избран ден, drag&drop подредба, бележки)
@@ -41,10 +43,12 @@ src/
                                  просто „изпълнено“ / „пропусни“ / „нулирай“). Ползва се в
                                  „Днес“, календара и при еднократните задачи.
                                  Props `hideSkip` (крие „Пропусни“) и `onDelete` (бутон „Изтрий“).
-      TodoList.jsx             — секция „Еднократни задачи“ в „Днес“ (само за днешния ден):
-                                 списък за отмятане, анимация при изпълнение + toast „Върни“
+      TodoList.jsx             — секция с еднократни задачи в „Днес“ (без заглавен надпис,
+                                 показва се за всеки ден): филтър `belongsHere` по `date` +
+                                 пренасяне на просрочените към „Днес“; анимация при изпълнение
+                                 + toast „Върни“
       TodoModal.jsx            — създаване / редакция на еднократна задача (име, описание,
-                                 брой изпълнения, подзадачи) — без правило/напомняне/цвят
+                                 брой изпълнения, подзадачи, `date`) — без правило/напомняне/цвят
     habits/
       HabitsScreen.jsx         — списък със задачи (навици), пренареждане
       HabitModal.jsx           — създаване/редакция на задача + правило за повторение
@@ -58,19 +62,34 @@ src/
       MakeupPicker.jsx         — избор на дата за наваксване (makeup)
     statistics/StatisticsScreen.jsx — статистики / серии
     settings/SettingsModal.jsx — backup/restore, import/export, архив, изтриване
-    ui/                        — дребни модали и контроли (Toast, Confirm, DateInput, Help…)
+    ui/                        — дребни модали и контроли (Toast, Confirm, Alert, Delete, Help…)
       InstallPrompt.jsx        — банер „Инсталирай приложението“
       UpdatePrompt.jsx         — изскачащ прозорец „Налична е нова версия“ (виж раздел 8)
+      SubtaskEditor.jsx        — редактор на подзадачи: „Добави подзадача“ (+ автофокус),
+                                 ▲▼ пренареждане, ✕ премахване. Ползва се в HabitModal и TodoModal
+      SearchableSelect.jsx     — dropdown с вградено поле за търсене (филтрира по `includes`,
+                                 нечувствително към регистър). Ползва се в CalendarScreen и
+                                 StatisticsScreen за избор на задача
+      DateInput.jsx            — въвеждане на дата дд/мм/гггг с `useRef` навигация между полетата
+                                 (работи и с два DateInput на екрана); select при фокус;
+                                 водеща нула при onBlur; валидира реална дата (година 1900–2100)
   hooks/
-    useConfetti.js             — конфети при завършване
-    useNotifications.js        — планира браузър-нотификации по reminderTime
+    useConfetti.js             — `fireConfetti` (стандартно, 2 сек) + `fireGoldenConfetti`
+                                 (златно — дефинирано, но в момента неизползвано)
+    useNotifications.js        — локални браузър-нотификации докато приложението е отворено:
+                                 проверка на всяка минута; праща само ако `habit.reminderTime`
+                                 == текущия HH:MM, има незавършена задача за деня; dedup чрез
+                                 localStorage ключ `lastNotif_<habitId>_<date>` (мин. 60 сек между
+                                 известия). Праща се през service worker `postMessage`, иначе
+                                 директно `new Notification`. Няма push/сървър.
   utils/
     storage.js                — IndexedDB чети/пиши, backup-и
     dateUtils.js              — формат/сравнение на дати (всичко се нормализира до полунощ)
     ruleEngine.js             — доказва дали дадена ДАТА попада в дадено ПРАВИЛО
     taskGenerator.js          — генерира задачи за месец; маркира „пропуснати“; прилага смяна на правило
     habitUtils.js             — статус-помощници: isTaskCompleted / hasTaskProgress /
-                                 getEffectiveStatus / getProgressText / createTaskObject / resetTaskProgress
+                                 getEffectiveStatus / getProgressText / createTaskObject / resetTaskProgress;
+                                 за еднократни задачи: createTodoObject / buildTodoArrays / computeTodoStatus
     calendarStates.js         — превръща (дата, задача, правило) в едно от 14-те визуални състояния C1–C14
     constants.js              — цветове, суфикси за редни числа
     exportImport.js           — валидиране и сглобяване на .json export/import
@@ -78,7 +97,7 @@ src/
 
 ### Навигация
 `App.jsx` → `NAV_ITEMS`: `today`, `habits`, `calendar`, `statistics`, `missed`.
-Единственото глобално състояние е в `App.jsx` (`data = { habits, tasks, rules, archivedHabits }`
+Единственото глобално състояние е в `App.jsx` (`data = { habits, tasks, rules, archivedHabits, todos }`
 + `dayOrders`). Всеки екран получава данните и callback-и надолу през props; промените
 се вдигат нагоре и се записват в IndexedDB с 1-секунден debounce.
 
@@ -108,8 +127,10 @@ src/
   color: string,                 // hex от constants.COLORS
   isDefault: boolean,            // само една може да е „по подразбиране“
   timesPerDay: number,          // ≥ 1. Ако > 1 → задачата има масив completions
-  subtasksCount: number,        // ≥ 0. Ако > 0 → задачата има масив subtasks
-  subtaskNames: string[],
+  subtasksCount: number,        // ≥ 0. Ако > 0 → задачата има масив subtasks.
+                                //   ВИНАГИ === subtaskNames.length — при запис се извежда
+                                //   от SubtaskEditor, не се въвежда отделно.
+  subtaskNames: string[],       // празен елемент "" се показва като „Подзадача N“
   reminderTime: "HH:MM" | null,  // за нотификации
   manualOrder?: number
 }
@@ -171,24 +192,28 @@ src/
   name: string,
   description: string | null,
   timesPerDay: number,           // ≥ 1
-  subtasksCount: number,         // ≥ 0
-  subtaskNames: string[],
+  subtasksCount: number,         // ≥ 0. ВИНАГИ === subtaskNames.length (изведено от SubtaskEditor)
+  subtaskNames: string[],        // празен елемент "" се показва като „Подзадача N“
   completions: [ { index, completed, timestamp }, ... ],  // само ако timesPerDay > 1
   subtasks:    [ { index, name, completed, timestamp }, ... ], // само ако subtasksCount > 0
   status: "pending" | "partial" | "completed",
   note: string,
-  createdAt: number,             // Date.now()
-  createdDate: "YYYY-MM-DD",     // само информативно (за сортиране); НЕ е насрочване
+  createdAt: number,             // Date.now() — за подредба
+  date: "YYYY-MM-DD",            // денят, за който е задачата (по подразбиране деня при създаване)
   completedAt: string | null
 }
 ```
 - **Напълно независими** от `habits` / `rules` / `tasks`. Не влизат в календара,
   статистиката, „Пропуснати“ или архива.
 - Живеят в `data.todos`, пазят се в същия IndexedDB запис, влизат в JSON export и backup-и.
-- Нямат дата → показват се в екран „Днес“ **само когато е избран днешният ден**
-  (`isTodaySelected` в `TodayScreen`) и остават там всеки следващ ден, докато не бъдат
-  отметнати или изтрити („пренасяне“).
+- Секцията се показва в екран „Днес“ **за всеки разглеждан ден**. Правило за видимост
+  (`TodoList.belongsHere`): показва се ако `todo.date === разглеждания ден`; **или** ако
+  разглеждаш днес и `todo.date` е минал и задачата не е завършена („пренасяне“ на
+  просрочените). Задача за бъдещ ден се вижда само на този ден, докато той не настъпи.
+- Стар запис без `date` се третира като „днес“ (fallback в `belongsHere`).
 - Отмятането ползва същия `TaskActions` (с `hideSkip` — без „Пропусни“; и `onDelete`).
+  „Нулирай задачата“ може да добави `manuallyReset: true` към todo обекта — без ефект,
+  не се чете никъде за еднократни задачи.
 - При пълно изпълнение: `status:"completed"`, конфети, ~1.15 s анимация „изчезва“
   (`animate-todo-done` в `index.css`), после `Toast` „Изпълнена“ с бутон „Върни“ (5 s).
   „Върни“ → връща snapshot-а отпреди последното отмятане (`onSave`); изтичане на toast-а
@@ -269,6 +294,8 @@ src/
   completions са направени.
 - `markCompleted` / `markMissed` / `reset` — прости преходи; `reset` слага
   `manuallyReset: true`.
+- Props `hideSkip` (крие бутона „Пропусни“) и `onDelete` (показва „Изтрий задачата“) —
+  ползват се от `TodoList` за еднократните задачи; при обикновените задачи не се подават.
 
 ### 4.6 Смяна на правило — `applyRuleChange(...)`
 Два режима: „само за бъдещи дати“ и „за всички дати“. И в двата: пазят се само
@@ -345,6 +372,27 @@ src/
 
 ## 7. История на поправките
 
+### 2026-09-06 — Нов редактор на подзадачи (SubtaskEditor)
+
+**Какво:** махнато е полето „брой подзадачи“ в `HabitModal` и `TodoModal`. Вместо това
+има бутон „Добави подзадача“, който добавя ред с поле и автоматично поставя курсора в
+него. Всеки ред има ▲▼ за пренареждане и „✕“ за премахване. Enter в поле добавя следващ ред.
+
+| Файл | Промяна |
+|------|---------|
+| `src/components/ui/SubtaskEditor.jsx` | **нов** — контролиран отвън чрез `names` / `onChange(string[])`; вътрешно държи `[{id,name}]` за стабилни ключове и автофокус |
+| `src/components/habits/HabitModal.jsx` | махнати `subtasksCount` state + `handleSubtasksCountChange`; `buildObjects` слага `subtasksCount: subtaskNames.length`; рендва `<SubtaskEditor>` |
+| `src/components/today/TodoModal.jsx` | същото — `count = subtaskNames.length` |
+| `src/components/ui/HelpModal.jsx` | обновена точка „Подзадачи“ |
+
+**Бележки:**
+- `subtasksCount` вече е **производно** (`subtaskNames.length`) — не се въвежда отделно.
+  Цялата логика надолу (`createTaskObject`, `buildTodoArrays`, реконсилирането в `App.jsx`,
+  `calendarStates`) остава непроменена, защото за задачи, записани през модала,
+  `subtaskNames.length === subtasksCount` винаги е било вярно.
+- Празно име не се материализира при запис — остава `""` и се показва като „Подзадача N“
+  чрез съществуващия fallback (`habit.subtaskNames?.[i] || 'Подзадача N'`).
+
 ### 2026-09-06 — Еднократни задачи (todos)
 
 **Какво:** нова възможност за създаване на еднократни задачи („списък за отмятане“ за
@@ -359,16 +407,19 @@ rule логика. Пълен модел — виж раздел 3.4.
 |------|---------|
 | `src/utils/storage.js` | `todos: []` в `EMPTY_DATA` и в мапинга при `loadAppData` |
 | `src/utils/exportImport.js` | `validateAppData` валидира `todos` по избор (обратно съвместимо) |
-| `src/utils/habitUtils.js` | нови: `createTodoObject`, `buildTodoArrays`, `computeTodoStatus`; импорт на `formatDate` |
+| `src/utils/habitUtils.js` | нови: `createTodoObject` (с параметър `date`), `buildTodoArrays`, `computeTodoStatus`; импорт на `formatDate` |
 | `src/App.jsx` | `todos` в state; `handleTodoSave` (upsert по id) / `handleTodoDelete`; чисти `completed` todos при load и import; включва `todos` в clear/import; подава props към `TodayScreen` |
 | `src/components/today/TaskActions.jsx` | нови props `hideSkip` (крие „Пропусни“) и `onDelete` (бутон „Изтрий задачата“) — обратно съвместими |
-| `src/components/today/TodayScreen.jsx` | рендва `<TodoList>` над списъка с повтарящи се задачи, само когато `isTodaySelected`; търсачката филтрира и todos |
-| `src/components/today/TodoList.jsx` | **нов** — секцията, прозорецът за действия (`TaskActions`), анимация при изпълнение + `Toast` „Върни“ |
-| `src/components/today/TodoModal.jsx` | **нов** — създаване/редакция |
+| `src/components/today/TodayScreen.jsx` | рендва `<TodoList>` над списъка с повтарящи се задачи **за всеки ден**; подава `dateStr` + `isToday`; търсачката филтрира и todos |
+| `src/components/today/TodoList.jsx` | **нов** — секцията (без заглавие), `belongsHere` филтър по `date` + пренасяне на просрочените, прозорец за действия (`TaskActions`), анимация при изпълнение + `Toast` „Върни“ |
+| `src/components/today/TodoModal.jsx` | **нов** — създаване/редакция; приема `date` за деня на новата задача |
 | `src/index.css` | нов keyframe `animate-todo-done` |
 | `src/components/ui/HelpModal.jsx` | нова секция „📝 Еднократни задачи“ |
 
 **Бележки:**
+- Секцията няма заглавен надпис — само бутонът „Създай еднократна задача“ и списъкът.
+- Всяка todo има `date` (денят при създаване). Показва се на своя ден; просрочените
+  неотметнати се показват и в „Днес“. Задача за бъдещ ден — само на този ден.
 - „Изтрий задачата“ при todo е без потвърждение (за разлика от навиците) — еднократната
   задача няма история за пазене.
 - Undo прозорецът е 5 s; анимацията „изчезва“ ~1.15 s.
@@ -453,3 +504,33 @@ worker все още е с логиката „autoUpdate“, затова то�
 app switcher-а, особено на iPhone) и го отвори пак 1–2 пъти с интернет.
 Краен вариант е деинсталиране/повторно инсталиране или изчистване на данните за
 сайта — но първо направи JSON backup от „Настройки“, защото това трие IndexedDB.
+
+---
+
+## 9. Кой файл за коя промяна
+
+| Промяна | Файлове |
+|---------|---------|
+| Модал за добавяне/редактиране на задача (навик) | `components/habits/HabitModal.jsx` |
+| Картичка на задача в екран „Задачи“ | `components/habits/HabitCard.jsx` |
+| Списък / подредба в екран „Задачи“ | `components/habits/HabitsScreen.jsx`, `HabitCard.jsx` |
+| Екран „Днес“ | `components/today/TodayScreen.jsx` (и `App.jsx`, ако е свързано с `dayOrders`) |
+| Завършване / пропускане / нулиране на задача | `components/today/TaskActions.jsx` |
+| Еднократни задачи (секция, действия, анимация) | `components/today/TodoList.jsx`, `TodoModal.jsx` (+ `App.jsx`, `utils/habitUtils.js`) |
+| Редактор на подзадачи (в двата модала) | `components/ui/SubtaskEditor.jsx` |
+| Календар (изглед, цветове на дните) | `components/calendar/CalendarScreen.jsx`, `utils/calendarStates.js` |
+| Модал при клик на ден в календара | `components/calendar/DayModal.jsx`, `today/TaskActions.jsx` |
+| Picker за наваксване (makeup) | `components/calendar/MakeupPicker.jsx` (и `UnlinkedPicker` в `DayModal.jsx`) |
+| Правило за повторение (логика) | `utils/ruleEngine.js`, `utils/taskGenerator.js` |
+| Генериране на задачи за месец / смяна на правило | `utils/taskGenerator.js` |
+| Екран „Пропуснати и Отработени“ | `components/habits/MissedScreen.jsx` |
+| Архив (списък, връщане, изтриване) | `components/habits/ArchiveScreen.jsx` (рендва се в `SettingsModal.jsx`) |
+| Статистика / серии | `components/statistics/StatisticsScreen.jsx` |
+| Настройки / export / import / backup | `components/settings/SettingsModal.jsx`, `utils/exportImport.js`, `utils/storage.js` |
+| Поле за въвеждане на дата | `components/ui/DateInput.jsx` |
+| Dropdown с търсене (Календар / Статистика) | `components/ui/SearchableSelect.jsx` |
+| Инлайн търсене над списък (Задачи / Днес / Пропуснати) | съответния екран (`HabitsScreen` / `TodayScreen` / `MissedScreen`) |
+| Главна навигация / глобално състояние | `App.jsx` |
+| Помощно ръководство за потребителя | `components/ui/HelpModal.jsx` |
+| Нотификации (планиране, dedup) | `hooks/useNotifications.js` |
+| PWA / service worker / обновяване | `vite.config.js`, `public/sw.js`, `components/ui/UpdatePrompt.jsx` |

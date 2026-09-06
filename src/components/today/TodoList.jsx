@@ -1,20 +1,23 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { getEffectiveStatus, getProgressText, isTaskCompleted } from '../../utils/habitUtils';
+import { formatDate } from '../../utils/dateUtils';
 import TaskActions from './TaskActions';
 import TodoModal from './TodoModal';
 import Toast from '../ui/Toast';
 
 // ─────────────────────────────────────────────────────────
-// TodoList — секция „Еднократни задачи" в екран „Днес"
+// TodoList — секция с еднократни задачи в екран „Днес"
 //
 // Props:
 //   todos        — масив с еднократни задачи
+//   dateStr      — денят, който се разглежда (YYYY-MM-DD)
+//   isToday      — true ако dateStr е днес
 //   onSave       — callback(todo) — upsert по id (създаване/редакция/прогрес/върни)
 //   onDelete     — callback(id)
 //   searchQuery  — текущият текст в търсачката на „Днес"
 // ─────────────────────────────────────────────────────────
-export default function TodoList({ todos, onSave, onDelete, searchQuery = '' }) {
+export default function TodoList({ todos, dateStr, isToday = false, onSave, onDelete, searchQuery = '' }) {
   const [showCreate,  setShowCreate]  = useState(false);
   const [editingTodo, setEditingTodo] = useState(null);   // todo в режим редакция
   const [actionTodo,  setActionTodo]  = useState(null);   // todo с отворен прозорец за действия
@@ -23,9 +26,19 @@ export default function TodoList({ todos, onSave, onDelete, searchQuery = '' }) 
 
   const isSearching = searchQuery.trim().length > 0;
   const q = searchQuery.trim().toLowerCase();
+  const todayStr = formatDate(new Date());
+
+  const belongsHere = (t) => {
+    const d = t.date ?? todayStr;
+    if (d === dateStr) return true;
+    // Просрочените неотметнати се „пренасят" и се показват в „Днес"
+    if (isToday && d < todayStr && t.status !== 'completed') return true;
+    return false;
+  };
 
   const visibleTodos = todos
     .filter(t => t.status !== 'completed' || t.id === completingId)
+    .filter(belongsHere)
     .filter(t => !isSearching || t.name.toLowerCase().includes(q))
     .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
 
@@ -60,11 +73,6 @@ export default function TodoList({ todos, onSave, onDelete, searchQuery = '' }) 
 
   return (
     <div className="bg-gradient-to-br from-amber-50 to-yellow-100 rounded-2xl shadow-lg p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-gray-800 flex items-center gap-2">📝 Еднократни задачи</h3>
-        <span className="text-xs text-gray-500">{todos.filter(t => t.status !== 'completed').length}</span>
-      </div>
-
       <button
         onClick={() => setShowCreate(true)}
         className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold shadow-md hover:shadow-lg flex items-center justify-center gap-2 transition-shadow"
@@ -74,9 +82,9 @@ export default function TodoList({ todos, onSave, onDelete, searchQuery = '' }) 
       </button>
 
       {visibleTodos.length === 0 ? (
-        <p className="text-center text-gray-500 text-sm py-2">
-          {isSearching ? 'Няма намерени еднократни задачи' : 'Няма еднократни задачи'}
-        </p>
+        isSearching ? (
+          <p className="text-center text-gray-500 text-sm py-1">Няма намерени еднократни задачи</p>
+        ) : null
       ) : (
         <div className="space-y-2">
           {visibleTodos.map(todo => {
@@ -147,6 +155,7 @@ export default function TodoList({ todos, onSave, onDelete, searchQuery = '' }) 
       {showCreate && (
         <TodoModal
           todo={null}
+          date={dateStr}
           onSave={(todo) => { onSave(todo); setShowCreate(false); }}
           onClose={() => setShowCreate(false)}
         />
@@ -155,6 +164,7 @@ export default function TodoList({ todos, onSave, onDelete, searchQuery = '' }) 
       {editingTodo && (
         <TodoModal
           todo={editingTodo}
+          date={dateStr}
           onSave={(todo) => { onSave(todo); setEditingTodo(null); }}
           onClose={() => setEditingTodo(null)}
         />

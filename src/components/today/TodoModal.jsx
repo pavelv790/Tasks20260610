@@ -1,39 +1,32 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { createTodoObject, buildTodoArrays, computeTodoStatus } from '../../utils/habitUtils';
+import SubtaskEditor from '../ui/SubtaskEditor';
 
 // ─────────────────────────────────────────────────────────
 // TodoModal — създаване / редакция на еднократна задача
 //
 // Props:
 //   todo     — обектът за редакция, или null за нова
+//   date     — денят (YYYY-MM-DD), за който се създава нова задача
 //   onSave   — callback(todoObject)
 //   onClose  — затваря модала
 // ─────────────────────────────────────────────────────────
-export default function TodoModal({ todo, onSave, onClose }) {
+export default function TodoModal({ todo, date, onSave, onClose }) {
   const isEditing = !!todo;
 
   const [name,          setName]          = useState(todo?.name          ?? '');
   const [description,   setDescription]   = useState(todo?.description   ?? '');
   const [timesPerDay,   setTimesPerDay]   = useState(todo?.timesPerDay   ?? 1);
-  const [subtasksCount, setSubtasksCount] = useState(todo?.subtasksCount ?? 0);
   const [subtaskNames,  setSubtaskNames]  = useState(todo?.subtaskNames  ?? []);
   const [error,         setError]         = useState('');
-
-  const handleSubtasksCountChange = (val) => {
-    const count = Math.max(0, parseInt(val) || 0);
-    setSubtasksCount(count);
-    const names = [...subtaskNames];
-    while (names.length < count) names.push('');
-    setSubtaskNames(names.slice(0, count));
-  };
 
   const handleSubmit = () => {
     const trimmed = name.trim();
     if (!trimmed) { setError('Името е задължително'); return; }
 
     const times = Math.max(1, parseInt(timesPerDay) || 1);
-    const count = Math.max(0, parseInt(subtasksCount) || 0);
+    const count = subtaskNames.length;
 
     if (isEditing) {
       const { completions, subtasks } = buildTodoArrays(
@@ -42,6 +35,7 @@ export default function TodoModal({ todo, onSave, onClose }) {
       );
       const updated = {
         ...todo,
+        date: todo.date ?? date,
         name: trimmed,
         description: description.trim() || null,
         timesPerDay: times,
@@ -62,6 +56,7 @@ export default function TodoModal({ todo, onSave, onClose }) {
       timesPerDay: times,
       subtasksCount: count,
       subtaskNames,
+      date,
     }));
   };
 
@@ -134,39 +129,12 @@ export default function TodoModal({ todo, onSave, onClose }) {
 
             {/* Подзадачи */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Подзадачи (0 = без подзадачи)</label>
-              <input
-                type="number" min="0"
-                value={subtasksCount}
-                onChange={e => handleSubtasksCountChange(e.target.value)}
-                onFocus={e => e.target.select()}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-400 focus:outline-none"
-              />
-              {subtasksCount > 0 && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs text-gray-600">Имена на подзадачите (напр. списък с продукти):</p>
-                  {Array.from({ length: subtasksCount }, (_, i) => (
-                    <input
-                      key={i}
-                      type="text"
-                      value={subtaskNames[i] ?? ''}
-                      onChange={e => {
-                        const names = [...subtaskNames];
-                        names[i] = e.target.value;
-                        setSubtaskNames(names);
-                      }}
-                      placeholder={`Подзадача ${i + 1}`}
-                      maxLength={50}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-indigo-400 focus:outline-none text-sm"
-                    />
-                  ))}
-                  <p className="text-gray-400 text-xs">Ако оставиш празно, ще се номерира автоматично</p>
-                </div>
-              )}
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Подзадачи (напр. списък с продукти)</label>
+              <SubtaskEditor names={subtaskNames} onChange={setSubtaskNames} />
             </div>
 
             <p className="text-xs text-gray-500">
-              💡 Еднократната задача стои в „Днес“, докато не я отметнеш. Няма правило за повторение и не влиза в календара и статистиката.
+              💡 Задачата се добавя за избрания ден и стои там, докато не я отметнеш. Ако денят ѝ мине неотметната, се показва и в „Днес“. Няма правило за повторение и не влиза в календара и статистиката.
             </p>
 
           </div>

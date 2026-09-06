@@ -294,14 +294,14 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
         />
       </div>
 
-      {isTodaySelected && (
-        <TodoList
-          todos={todos}
-          onSave={onTodoSave}
-          onDelete={onTodoDelete}
-          searchQuery={searchQuery}
-        />
-      )}
+      <TodoList
+        todos={todos}
+        dateStr={dateStr}
+        isToday={isTodaySelected}
+        onSave={onTodoSave}
+        onDelete={onTodoDelete}
+        searchQuery={searchQuery}
+      />
 
       <div className="space-y-2">
         {entries.length === 0 ? (

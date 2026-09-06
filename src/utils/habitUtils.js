@@ -145,8 +145,9 @@ export const computeTodoStatus = (todo) => {
   return todo.status === 'completed' ? 'completed' : 'pending';
 };
 
-// Създава нов todo обект
-export const createTodoObject = ({ name, description, timesPerDay = 1, subtasksCount = 0, subtaskNames = [] }) => {
+// Създава нов todo обект.
+// `date` = денят, за който е задачата (по подразбиране днес).
+export const createTodoObject = ({ name, description, timesPerDay = 1, subtasksCount = 0, subtaskNames = [], date }) => {
   const { completions, subtasks } = buildTodoArrays({ timesPerDay, subtasksCount, subtaskNames });
   return {
     id: generateId('todo'),
@@ -160,7 +161,7 @@ export const createTodoObject = ({ name, description, timesPerDay = 1, subtasksC
     status: 'pending',
     note: '',
     createdAt: Date.now(),
-    createdDate: formatDate(new Date()),
+    date: date || formatDate(new Date()),
     completedAt: null,
   };
 };
