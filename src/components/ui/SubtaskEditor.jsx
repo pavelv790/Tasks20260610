@@ -48,23 +48,7 @@ export default function SubtaskEditor({ names = [], onChange }) {
   return (
     <div className="space-y-2">
       {items.map((it, idx) => (
-        <div key={it.id} className="flex items-center gap-1">
-          <div className="flex flex-col">
-            <button
-              type="button"
-              onClick={() => move(idx, -1)}
-              disabled={idx === 0}
-              className="px-1 text-xs leading-none text-gray-500 hover:text-gray-800 disabled:opacity-25"
-              title="Нагоре"
-            >▲</button>
-            <button
-              type="button"
-              onClick={() => move(idx, 1)}
-              disabled={idx === items.length - 1}
-              className="px-1 text-xs leading-none text-gray-500 hover:text-gray-800 disabled:opacity-25"
-              title="Надолу"
-            >▼</button>
-          </div>
+        <div key={it.id} className="flex items-center gap-0.5">
           <input
             ref={el => { inputs.current[it.id] = el; }}
             type="text"
@@ -73,12 +57,26 @@ export default function SubtaskEditor({ names = [], onChange }) {
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
             placeholder={`Подзадача ${idx + 1}`}
             maxLength={50}
-            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:border-indigo-400 focus:outline-none text-sm"
+            className="flex-1 min-w-0 mr-1 px-3 py-2 border border-gray-200 rounded-lg focus:border-indigo-400 focus:outline-none text-sm"
           />
           <button
             type="button"
+            onClick={() => move(idx, -1)}
+            disabled={idx === 0}
+            className="p-1.5 hover:bg-white hover:bg-opacity-50 rounded-lg transition-colors disabled:opacity-30 text-xs leading-none text-gray-500"
+            title="Премести нагоре"
+          >▲</button>
+          <button
+            type="button"
+            onClick={() => move(idx, 1)}
+            disabled={idx === items.length - 1}
+            className="p-1.5 hover:bg-white hover:bg-opacity-50 rounded-lg transition-colors disabled:opacity-30 text-xs leading-none text-gray-500"
+            title="Премести надолу"
+          >▼</button>
+          <button
+            type="button"
             onClick={() => remove(it.id)}
-            className="px-2 py-2 text-red-500 hover:bg-red-50 rounded-lg leading-none"
+            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg leading-none transition-colors"
             title="Премахни"
           >✕</button>
         </div>

@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Search, Plus } from 'lucide-react';
 import { formatDate, formatDisplayDateWithToday, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight } from '../../utils/dateUtils';
 import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerator';
 import { getEffectiveStatus, getProgressText, isTaskCompleted } from '../../utils/habitUtils';
 import { getCalendarDayState } from '../../utils/calendarStates';
 import TaskActions from './TaskActions';
-import TodoList from './TodoList';
+import TodoRow from './TodoRow';
+import TodoModal from './TodoModal';
+import Toast from '../ui/Toast';
 
 export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksUpdate, onTaskNoteUpdate, onHabitsReorder, onTodoSave, onTodoDelete, dayOrders, onDayOrdersChange }) {
   const [selectedDate,   setSelectedDate]   = useState(new Date());
@@ -19,6 +21,9 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
   const [noteValues,     setNoteValues]     = useState({});
   const [modalNote,      setModalNote]      = useState('');
   const [searchQuery,    setSearchQuery]    = useState('');
+  const [completingTodoId, setCompletingTodoId] = useState(null);
+  const [undoTodo,       setUndoTodo]       = useState(null);
+  const [showCreateTodo, setShowCreateTodo] = useState(false);
   const followingTodayRef = useRef(true);
 
   useEffect(() => {
@@ -92,40 +97,65 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
     return a.name.localeCompare(b.name, 'bg');
   });
 
-  const dayOrder = dayOrders[dateStr];
-  const sortedForDay = dayOrder
-    ? [...sortedHabits].sort((a, b) => {
-        const ia = dayOrder.indexOf(a.id);
-        const ib = dayOrder.indexOf(b.id);
-        const oa = ia === -1 ? 999 : ia;
-        const ob = ib === -1 ? 999 : ib;
-        return oa - ob;
-      })
-    : sortedHabits;
-
   const today          = toMidnight(new Date());
   const selDay         = toMidnight(selectedDate);
   const isTodaySelected = selDay.getTime() === today.getTime();
 
-  const entries = sortedForDay
-    .map(habit => {
-      const task = tasksForDate.find(t => t.habitId === habit.id);
-      if (!task) return null;
-      const status = getEffectiveStatus(task);
-      if (status === 'completed' && !task.makeupFromDate) return null;
-      if (isTaskCompleted(task) && task.makeupFromDate) return null;
-      if (task.makeupForDate) {
-        const makeupTask = tasks.find(t => t.date === task.makeupForDate && t.habitId === habit.id);
-        if (makeupTask && isTaskCompleted(makeupTask)) return null;
-      }
-      return { habit, task, status };
-    })
-    .filter(Boolean);
-
   const isSearching = searchQuery.trim().length > 0;
-  const filteredEntries = isSearching
-    ? entries.filter(({ habit }) => habit.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
-    : entries;
+  const q = searchQuery.trim().toLowerCase();
+  const todayStr = formatDate(new Date());
+
+  // ── Еднократни задачи за този ден (+ пренасяне на просрочените в „Днес") ──
+  const todoBelongsHere = (t) => {
+    const d = t.date ?? todayStr;
+    if (d === dateStr) return true;
+    if (isTodaySelected && d < todayStr && t.status !== 'completed') return true;
+    return false;
+  };
+  const ordTodo = (t) => t.order ?? t.createdAt ?? 0;
+  const dayTodos = todos
+    .filter(t => t.status !== 'completed' || t.id === completingTodoId)
+    .filter(todoBelongsHere)
+    .sort((a, b) => ordTodo(a) - ordTodo(b));
+
+  // ── Общ ред: навици (по подредба) + еднократни, после евент. ръчна подредба за деня ──
+  const naturalRefs = [
+    ...sortedHabits.map(h => ({ kind: 'habit', id: h.id })),
+    ...dayTodos.map(t => ({ kind: 'todo', id: t.id })),
+  ];
+  const dayOrderList = dayOrders[dateStr];
+  const orderedRefs = dayOrderList
+    ? [...naturalRefs].sort((a, b) => {
+        const ia = dayOrderList.indexOf(a.id);
+        const ib = dayOrderList.indexOf(b.id);
+        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+      })
+    : naturalRefs;
+
+  // ── Видими елементи (скрити: завършени навици, липсващи задачи, наваксани дни) ──
+  const items = orderedRefs.map(ref => {
+    if (ref.kind === 'todo') {
+      const todo = todos.find(t => t.id === ref.id);
+      if (!todo) return null;
+      if (todo.status === 'completed' && todo.id !== completingTodoId) return null;
+      return { kind: 'todo', id: ref.id, todo };
+    }
+    const habit = habits.find(h => h.id === ref.id);
+    const task  = tasksForDate.find(t => t.habitId === ref.id);
+    if (!habit || !task) return null;
+    const status = getEffectiveStatus(task);
+    if (status === 'completed' && !task.makeupFromDate) return null;
+    if (isTaskCompleted(task) && task.makeupFromDate) return null;
+    if (task.makeupForDate) {
+      const makeupTask = tasks.find(t => t.date === task.makeupForDate && t.habitId === ref.id);
+      if (makeupTask && isTaskCompleted(makeupTask)) return null;
+    }
+    return { kind: 'habit', id: ref.id, habit, task, status };
+  }).filter(Boolean);
+
+  const filteredItems = isSearching
+    ? items.filter(it => (it.kind === 'habit' ? it.habit.name : it.todo.name).toLowerCase().includes(q))
+    : items;
 
   const handleTaskUpdate = (updatedTask) => {
     const withNote = modalNote !== (updatedTask.note || '')
@@ -144,35 +174,48 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
     setShowDayModal(false);
   };
   
-    const moveEntry = (habitId, direction) => {
-    const visibleIds = entries.map(e => e.habit.id);
-    const vIdx = visibleIds.indexOf(habitId);
+  // Пренареждане в общия ред (навици + еднократни); пише пълния ред в dayOrders[dateStr]
+  const moveItem = (id, direction) => {
+    if (isSearching) return;
+    const visibleIds = items.map(it => it.id);
+    const vIdx = visibleIds.indexOf(id);
     const targetIdx = vIdx + direction;
     if (vIdx === -1 || targetIdx < 0 || targetIdx >= visibleIds.length) return;
     const targetId = visibleIds[targetIdx];
 
-    const fullOrder = sortedForDay.map(h => h.id);
-    const i = fullOrder.indexOf(habitId);
-    const j = fullOrder.indexOf(targetId);
-    [fullOrder[i], fullOrder[j]] = [fullOrder[j], fullOrder[i]];
-    onDayOrdersChange(prev => ({ ...prev, [dateStr]: fullOrder }));
+    const full = orderedRefs.map(r => r.id);
+    const i = full.indexOf(id);
+    const j = full.indexOf(targetId);
+    [full[i], full[j]] = [full[j], full[i]];
+    onDayOrdersChange(prev => ({ ...prev, [dateStr]: full }));
   };
 
-  const handleDragStart = (e, habitId) => {
-    setDraggedId(habitId);
+  const handleDragStart = (e, id) => {
+    setDraggedId(id);
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDrop = (e, targetHabitId) => {
+  const handleDrop = (e, targetId) => {
     e.preventDefault();
-    if (!draggedId || draggedId === targetHabitId) { setDraggedId(null); return; }
-    const dragIdx   = sortedForDay.findIndex(h => h.id === draggedId);
-    const targetIdx = sortedForDay.findIndex(h => h.id === targetHabitId);
-    const reordered = [...sortedForDay];
+    if (!draggedId || draggedId === targetId) { setDraggedId(null); return; }
+    const full = orderedRefs.map(r => r.id);
+    const dragIdx   = full.indexOf(draggedId);
+    const targetIdx = full.indexOf(targetId);
+    if (dragIdx === -1 || targetIdx === -1) { setDraggedId(null); return; }
+    const reordered = [...full];
     const [moved]   = reordered.splice(dragIdx, 1);
     reordered.splice(targetIdx, 0, moved);
-    onDayOrdersChange(prev => ({ ...prev, [dateStr]: reordered.map(h => h.id) }));
+    onDayOrdersChange(prev => ({ ...prev, [dateStr]: reordered }));
     setDraggedId(null);
+  };
+
+  // Еднократна задача е завършена → кратка анимация, после toast „Върни"
+  const handleTodoComplete = (snapshot) => {
+    setCompletingTodoId(snapshot.id);
+    setTimeout(() => {
+      setCompletingTodoId(null);
+      setUndoTodo(snapshot);
+    }, 1200);
   };
 
   const pickerDays = (() => {
@@ -294,17 +337,8 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
         />
       </div>
 
-      <TodoList
-        todos={todos}
-        dateStr={dateStr}
-        isToday={isTodaySelected}
-        onSave={onTodoSave}
-        onDelete={onTodoDelete}
-        searchQuery={searchQuery}
-      />
-
       <div className="space-y-2">
-        {entries.length === 0 ? (
+        {items.length === 0 ? (
           <div className="bg-gradient-to-br from-blue-100 to-cyan-100 rounded-2xl shadow-lg p-8 text-center">
             {tasksForDate.length === 0 ? (
               <><div className="text-6xl mb-4">🔭</div><p className="text-xl font-semibold text-gray-600">Няма задачи за този ден</p></>
@@ -314,10 +348,34 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
               <><div className="text-6xl mb-4">🎉</div><p className="text-xl font-semibold text-green-600">Браво! Всичко е завършено!</p><p className="text-gray-500 mt-2">Днес си го направил страхотно! 💪</p></>
             )}
           </div>
-        ) : filteredEntries.length === 0 ? (
+        ) : filteredItems.length === 0 ? (
           <p className="text-center text-gray-500 py-6">Няма намерени задачи</p>
         ) : (
-          filteredEntries.map(({ habit, task, status }) => {
+          filteredItems.map((it, idx) => {
+            if (it.kind === 'todo') {
+              return (
+                <TodoRow
+                  key={it.id}
+                  todo={it.todo}
+                  dateStr={dateStr}
+                  onSave={onTodoSave}
+                  onDelete={onTodoDelete}
+                  onComplete={handleTodoComplete}
+                  completing={completingTodoId === it.id}
+                  isSearching={isSearching}
+                  isFirst={idx === 0}
+                  isLast={idx === filteredItems.length - 1}
+                  onMoveUp={() => moveItem(it.id, -1)}
+                  onMoveDown={() => moveItem(it.id, 1)}
+                  draggable={!isSearching}
+                  onDragStart={e => !isSearching && handleDragStart(e, it.id)}
+                  onDragOver={e => !isSearching && e.preventDefault()}
+                  onDrop={e => !isSearching && handleDrop(e, it.id)}
+                  isDragging={draggedId === it.id}
+                />
+              );
+            }
+            const { habit, task, status } = it;
             const progressText = getProgressText(task);
             const activeRule = rules.find(r => r.habitId === habit.id && r.isActive);
             const dayState = getCalendarDayState(selectedDate, task, activeRule);
@@ -409,14 +467,14 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
                     >📝</button>
                     <div className="flex flex-col gap-0.5">
                       <button
-                        onClick={() => moveEntry(habit.id, -1)}
-                        disabled={isSearching || entries.findIndex(e => e.habit.id === habit.id) === 0}
+                        onClick={() => moveItem(habit.id, -1)}
+                        disabled={isSearching || idx === 0}
                         className="p-0.5 hover:bg-white hover:bg-opacity-50 rounded transition-colors disabled:opacity-30 text-xs leading-none"
                         title="Премести нагоре"
                       >▲</button>
                       <button
-                        onClick={() => moveEntry(habit.id, 1)}
-                        disabled={isSearching || entries.findIndex(e => e.habit.id === habit.id) === entries.length - 1}
+                        onClick={() => moveItem(habit.id, 1)}
+                        disabled={isSearching || idx === filteredItems.length - 1}
                         className="p-0.5 hover:bg-white hover:bg-opacity-50 rounded transition-colors disabled:opacity-30 text-xs leading-none"
                         title="Премести надолу"
                       >▼</button>
@@ -428,6 +486,43 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
           })
         )}
       </div>
+
+      {/* Създаване на еднократна задача — под списъка */}
+      <button
+        onClick={() => setShowCreateTodo(true)}
+        className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold shadow-md hover:shadow-lg flex items-center justify-center gap-2 transition-shadow"
+      >
+        <Plus className="w-5 h-5" />
+        Създай еднократна задача
+      </button>
+
+      {showCreateTodo && (
+        <TodoModal
+          todo={null}
+          date={dateStr}
+          onSave={(t) => { onTodoSave(t); setShowCreateTodo(false); }}
+          onClose={() => setShowCreateTodo(false)}
+        />
+      )}
+
+      {undoTodo && (
+        <Toast
+          type="success"
+          duration={5000}
+          message={
+            <span className="flex items-center gap-3 whitespace-nowrap">
+              Изпълнена
+              <button
+                onClick={() => { onTodoSave(undoTodo); setUndoTodo(null); }}
+                className="underline font-bold bg-white/20 px-2 py-0.5 rounded-lg hover:bg-white/30"
+              >
+                Върни
+              </button>
+            </span>
+          }
+          onClose={() => { onTodoDelete(undoTodo.id); setUndoTodo(null); }}
+        />
+      )}
 
       {showDayModal && selectedEntry && (
         <div className="fixed inset-0 bg-gradient-to-br from-cyan-400 via-teal-300 to-emerald-300 bg-opacity-80 flex items-center justify-center p-4 z-50">

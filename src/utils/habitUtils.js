@@ -161,6 +161,7 @@ export const createTodoObject = ({ name, description, timesPerDay = 1, subtasksC
     status: 'pending',
     note: '',
     createdAt: Date.now(),
+    order: Date.now(),            // за ръчно пренареждане в списъка
     date: date || formatDate(new Date()),
     completedAt: null,
   };
