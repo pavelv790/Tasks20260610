@@ -89,6 +89,11 @@ export default function HabitCard({
           <p>🔄 {habit.timesPerDay}x на ден</p>
           {habit.subtasksCount > 0 && <p>📋 {habit.subtasksCount} подзадачи</p>}
           {habit.reminderTime && <p>🔔 {habit.reminderTime}</p>}
+          {habit.inactive
+            ? <p className="text-slate-600 font-semibold">⏸ Неактивна</p>
+            : ((habit.inactiveCompletions?.length || habit.inactiveSubtasks?.length)
+                ? <p className="text-slate-500 font-semibold">⏸ Частично неактивна</p>
+                : null)}
         </div>
       </div>
 

@@ -17,11 +17,12 @@
 //   C12 Makeup + всички завършвания
 //   C13 Makeup + подзадачи частично
 //   C14 Отработен без връзка
+//   C15 Неактивна задача (заключена, не се брои)
 // ============================================================
 
 import { doesDateMatchRule } from './ruleEngine';
 import { toMidnight, formatShortDate } from './dateUtils';
-import { isTaskCompleted } from './habitUtils';
+import { isTaskCompleted, isEntirelyInactive } from './habitUtils';
 
 export const getCalendarDayState = (date, task, rule) => {
   const check  = toMidnight(new Date(date));
@@ -34,6 +35,12 @@ export const getCalendarDayState = (date, task, rule) => {
   if (!task) {
     if (inRule) return isPast ? STATE.C2 : STATE.C1;
     return STATE.C3;
+  }
+
+  // ── Неактивна задача (цял навик или всичките ѝ под-елементи) ──
+  // Вече завършен ден си остава завършен (миналото не се пренаписва).
+  if ((task.habitInactive || isEntirelyInactive(task)) && !isTaskCompleted(task)) {
+    return { ...STATE.C15, label: 'Неактивна' };
   }
 
   // ── Денят се наваксва другаде (C6) ──────────────────────
@@ -148,6 +155,7 @@ export const getCalendarDayStateWithRing = (date, task, rule) => {
   const inRule = rule ? doesDateMatchRule(check, rule) : false;
   const state  = getCalendarDayState(date, task, rule);
   if (state.unlinkedRing) return state;
+  if (state.state === 'C15') return state; // неактивна — без зелена рамка
   return { ...state, ring: isPast ? false : inRule };
 };
 
@@ -166,4 +174,5 @@ const STATE = {
   C12: { state: 'C12', bgColor: 'bg-green-400',                              ring: false, label: null, completionText: null },
   C13: { state: 'C13', bgColor: 'bg-gradient-to-br from-white to-green-300', ring: false, label: null, completionText: null },
   C14: { state: 'C14', bgColor: 'bg-white',                                  ring: false, label: 'Отработен', completionText: null, unlinkedRing: true },
+  C15: { state: 'C15', bgColor: 'bg-gray-50',                                ring: false, label: 'Неактивна', completionText: null },
 };

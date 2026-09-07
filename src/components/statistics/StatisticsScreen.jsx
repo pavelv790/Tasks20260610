@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import DateInput from '../ui/DateInput';
 import SearchableSelect from '../ui/SearchableSelect';
 import { doesDateMatchRule } from '../../utils/ruleEngine';
-import { isTaskCompleted } from '../../utils/habitUtils';
+import { isTaskCompleted, isEntirelyInactive } from '../../utils/habitUtils';
 import { toMidnight, formatDate } from '../../utils/dateUtils';
 import { getNextRuleDate } from '../../utils/ruleEngine';
 
@@ -67,7 +67,12 @@ export default function StatisticsScreen({ habits, tasks, rules }) {
     const today = toMidnight(new Date());
 
     const activeRule = rules.find(r => r.habitId === selectedId && r.isActive);
-    const habitTasks = tasks.filter(t => t.habitId === selectedId);
+    // Неактивните дни (цял навик неактивен, или всичките под-елементи неактивни)
+    // не влизат в статистиката — нито като изпълнени, нито като пропуснати.
+    const inactiveDates = new Set(
+      tasks.filter(t => t.habitId === selectedId && (t.habitInactive || isEntirelyInactive(t))).map(t => t.date)
+    );
+    const habitTasks = tasks.filter(t => t.habitId === selectedId && !inactiveDates.has(t.date));
     const taskMap = new Map(habitTasks.map(t => [t.date, t]));
 
     // Дни от правилото в периода
@@ -80,8 +85,9 @@ export default function StatisticsScreen({ habits, tasks, rules }) {
       const endD = to ?? today;
       let cur = new Date(startD);
       while (cur <= endD) {
-        if (doesDateMatchRule(cur, activeRule)) {
-          ruleDaysInPeriod.push(formatDate(cur));
+        const curStr = formatDate(cur);
+        if (doesDateMatchRule(cur, activeRule) && !inactiveDates.has(curStr)) {
+          ruleDaysInPeriod.push(curStr);
         }
         cur.setDate(cur.getDate() + 1);
       }
@@ -143,7 +149,9 @@ export default function StatisticsScreen({ habits, tasks, rules }) {
         const curStr = formatDate(cur);
         const inRule = doesDateMatchRule(cur, activeRule);
 
-        if (inRule) {
+        if (inactiveDates.has(curStr)) {
+          // неактивен ден — не се брои и не прекъсва поредицата
+        } else if (inRule) {
           const task = taskMap.get(curStr);
           const isToday = curStr === todayStr;
           if (completedDatesSet.has(curStr)) {
@@ -175,6 +183,8 @@ export default function StatisticsScreen({ habits, tasks, rules }) {
       </div>
     );
   }
+
+  const selectedHabit = habits.find(h => h.id === selectedId);
 
   return (
     <div className="space-y-4">
@@ -215,7 +225,13 @@ export default function StatisticsScreen({ habits, tasks, rules }) {
       </div>
 
       {/* Резултати */}
-      {stats && stats.total > 0 ? (
+      {selectedHabit?.inactive ? (
+        <div className="bg-gray-100 rounded-2xl shadow-lg p-6 text-center">
+          <div className="text-5xl mb-3">⏸</div>
+          <p className="text-lg font-semibold text-gray-700">Задачата е неактивна</p>
+          <p className="text-gray-500 mt-1 text-sm">Върни я като активна, за да се води статистика.</p>
+        </div>
+      ) : stats && stats.total > 0 ? (
         <div className="space-y-4">
 
           <div className="bg-gradient-to-br from-green-400 to-green-500 rounded-2xl shadow-lg p-6 text-white">

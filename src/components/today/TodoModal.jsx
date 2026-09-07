@@ -21,12 +21,31 @@ export default function TodoModal({ todo, date, onSave, onClose }) {
   const [subtaskNames,  setSubtaskNames]  = useState(todo?.subtaskNames  ?? []);
   const [error,         setError]         = useState('');
 
+  // ── Неактивност ──────────────────────────────────────
+  const [inactive,            setInactive]            = useState(todo?.inactive ?? false);
+  const [inactiveCompletions, setInactiveCompletions] = useState((todo?.completions ?? []).filter(c => c.inactive).map(c => c.index));
+  const [inactiveSubtasks,    setInactiveSubtasks]    = useState((todo?.subtasks ?? []).filter(s => s.inactive).map(s => s.index));
+  const toggleInList = (list, setList, idx) =>
+    setList(list.includes(idx) ? list.filter(i => i !== idx) : [...list, idx]);
+  const applyInactiveFlag = (arr, indices) => {
+    const set = new Set(indices);
+    return arr.map(el => {
+      if (set.has(el.index)) return { ...el, inactive: true };
+      if (!el.inactive) return el;
+      const copy = { ...el };
+      delete copy.inactive;
+      return copy;
+    });
+  };
+
   const handleSubmit = () => {
     const trimmed = name.trim();
     if (!trimmed) { setError('Името е задължително'); return; }
 
     const times = Math.max(1, parseInt(timesPerDay) || 1);
     const count = subtaskNames.length;
+    const validCompletions = inactiveCompletions.filter(i => i >= 1 && i <= times);
+    const validSubtasks    = inactiveSubtasks.filter(i => i >= 1 && i <= count);
 
     if (isEditing) {
       const { completions, subtasks } = buildTodoArrays(
@@ -41,8 +60,9 @@ export default function TodoModal({ todo, date, onSave, onClose }) {
         timesPerDay: times,
         subtasksCount: count,
         subtaskNames,
-        completions,
-        subtasks,
+        completions: applyInactiveFlag(completions, validCompletions),
+        subtasks: applyInactiveFlag(subtasks, validSubtasks),
+        inactive,
       };
       updated.status = computeTodoStatus(updated);
       if (updated.status !== 'completed') updated.completedAt = null;
@@ -50,14 +70,19 @@ export default function TodoModal({ todo, date, onSave, onClose }) {
       return;
     }
 
-    onSave(createTodoObject({
+    const created = createTodoObject({
       name: trimmed,
       description,
       timesPerDay: times,
       subtasksCount: count,
       subtaskNames,
       date,
-    }));
+    });
+    created.completions = applyInactiveFlag(created.completions, validCompletions);
+    created.subtasks = applyInactiveFlag(created.subtasks, validSubtasks);
+    created.inactive = inactive;
+    created.status = computeTodoStatus(created);
+    onSave(created);
   };
 
   return (
@@ -131,6 +156,70 @@ export default function TodoModal({ todo, date, onSave, onClose }) {
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Подзадачи (напр. списък с продукти)</label>
               <SubtaskEditor names={subtaskNames} onChange={setSubtaskNames} />
+            </div>
+
+            {/* Активност */}
+            <div className="border-2 border-gray-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-semibold text-gray-700">Задачата е неактивна</span>
+                  <p className="text-xs text-gray-500">Вижда се в „Днес", но е заключена и не се брои.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setInactive(p => !p)}
+                  className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${inactive ? 'bg-gradient-to-r from-slate-500 to-slate-600' : 'bg-gray-300'}`}
+                >
+                  <span className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-md transition-all duration-300 ${inactive ? 'translate-x-6' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
+              {!inactive && Math.max(1, parseInt(timesPerDay) || 1) > 1 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-1">Неактивни повторения</p>
+                  <div className="flex flex-wrap gap-2">
+                    {Array.from({ length: Math.max(1, parseInt(timesPerDay) || 1) }, (_, i) => i + 1).map(n => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => toggleInList(inactiveCompletions, setInactiveCompletions, n)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                          inactiveCompletions.includes(n)
+                            ? 'bg-slate-500 text-white line-through'
+                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!inactive && subtaskNames.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-1">Неактивни подзадачи</p>
+                  <div className="space-y-1">
+                    {subtaskNames.map((nm, i) => {
+                      const idx = i + 1;
+                      const off = inactiveSubtasks.includes(idx);
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => toggleInList(inactiveSubtasks, setInactiveSubtasks, idx)}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-between ${
+                            off ? 'bg-slate-500 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                          }`}
+                        >
+                          <span className={off ? 'line-through' : ''}>{nm || `Подзадача ${idx}`}</span>
+                          <span className="text-xs">{off ? '⏸ неактивна' : '▶ активна'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <p className="text-xs text-gray-500">

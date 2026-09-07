@@ -8,7 +8,7 @@ import { doesDateMatchRule } from '../../utils/ruleEngine';
 import DayModal from './DayModal';
 import SearchableSelect from '../ui/SearchableSelect';
 
-export default function CalendarScreen({ habits, tasks, rules, onTasksUpdate, initialTarget, onTargetConsumed }) {
+export default function CalendarScreen({ habits, tasks, rules, onTasksUpdate, onHabitInactivityChange, initialTarget, onTargetConsumed }) {
   const [selectedHabitId, setSelectedHabitId] = useState(
     initialTarget?.habitId || habits.find(h => h.isDefault)?.id || habits[0]?.id || null
   );
@@ -253,6 +253,7 @@ style={{
           allTasks={tasks}
           rules={rules}
           onTasksUpdate={handleTasksUpdate}
+          onHabitInactivityChange={onHabitInactivityChange}
           onClose={() => setShowDayModal(false)}
         />
       )}

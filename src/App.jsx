@@ -7,7 +7,7 @@
   } from './utils/storage';
   import { isMultiProfileExport } from './utils/exportImport';
   import { checkMissedTasks, generateTasksForMonth, applyRuleChange } from './utils/taskGenerator';
-  import { generateId, hasTaskProgress } from './utils/habitUtils';
+  import { generateId, hasTaskProgress, syncTaskInactivity } from './utils/habitUtils';
   import { formatDate, toMidnight } from './utils/dateUtils';
   import { useNotifications } from './hooks/useNotifications';
 
@@ -34,7 +34,10 @@
     !!t.note ||
     !!t.makeupFromDate ||
     !!t.makeupForDate ||
-    !!t.manuallyReset;
+    !!t.manuallyReset ||
+    !!t.habitInactive ||
+    (t.completions ?? []).some(c => c.inactive) ||
+    (t.subtasks ?? []).some(s => s.inactive);
 
   const dedupeTasksByHabitDate = (tasks) => {
     const map = new Map();
@@ -257,6 +260,7 @@
             updatedTasks = applyRuleChange(prev.tasks, habit, rule, applyToAll, futureOnly, oldRule);
           } else {
             // Правилото не се е сменило — обновяваме completions/subtasks на съществуващите задачи
+            const todayStr = formatDate(new Date());
             updatedTasks = prev.tasks.map(task => {
               if (task.habitId !== habit.id) return task;
 
@@ -310,7 +314,9 @@
                 newStatus = allDone ? 'completed' : someDone ? 'partial' : (task.status === 'missed' ? 'missed' : 'pending');
               }
 
-              return { ...task, completions, subtasks, status: newStatus };
+              const rebuilt = { ...task, completions, subtasks, status: newStatus };
+              // Неактивността се пренася само за днес и напред (миналото остава непокътнато)
+              return task.date >= todayStr ? syncTaskInactivity(rebuilt, habit) : rebuilt;
             });
           }
         }
@@ -395,6 +401,24 @@
     // Обновява подредбата на задачите
     const handleHabitsReorder = (reorderedHabits) => {
       setData(prev => ({ ...prev, habits: reorderedHabits }));
+    };
+
+    // Превключва „неактивно" на дефиницията на навика и пренася го върху
+    // задачите за ДНЕС и НАПРЕД (миналото остава непокътнато).
+    // patch: { inactive } | { inactiveCompletions } | { inactiveSubtasks }
+    const handleHabitInactivityChange = (habitId, patch) => {
+      setData(prev => {
+        const habits = prev.habits.map(h => (h.id === habitId ? { ...h, ...patch } : h));
+        const habit  = habits.find(h => h.id === habitId);
+        if (!habit) return prev;
+        const todayStr = formatDate(new Date());
+        const tasks = prev.tasks.map(t => {
+          if (t.habitId !== habitId) return t;
+          if (t.date < todayStr) return t;            // forward-only
+          return syncTaskInactivity(t, habit);
+        });
+        return { ...prev, habits, tasks };
+      });
     };
 
     // ── Профили ─────────────────────────────────────────
@@ -549,6 +573,7 @@
                 onHabitsReorder={handleHabitsReorder}
                 onTodoSave={handleTodoSave}
                 onTodoDelete={handleTodoDelete}
+                onHabitInactivityChange={handleHabitInactivityChange}
                 dayOrders={dayOrders}
                 onDayOrdersChange={setDayOrders}
               />
@@ -571,6 +596,7 @@
                 tasks={data.tasks}
                 rules={data.rules}
                 onTasksUpdate={handleTasksUpdate}
+                onHabitInactivityChange={handleHabitInactivityChange}
                 initialTarget={calendarTarget}
                 onTargetConsumed={() => setCalendarTarget(null)}
               />

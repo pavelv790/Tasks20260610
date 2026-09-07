@@ -5,7 +5,7 @@
 
 import { doesDateMatchRule } from './ruleEngine';
 import { formatDate, toMidnight, isPastDate } from './dateUtils';
-import { createTaskObject, isTaskCompleted, hasTaskProgress } from './habitUtils';
+import { createTaskObject, isTaskCompleted, hasTaskProgress, isEntirelyInactive } from './habitUtils';
 
 // -------------------------------------------------------
 // Генерира задачи за един месец за дадена задача
@@ -46,6 +46,8 @@ export const checkMissedTasks = (tasks) => {
   const today = toMidnight(new Date());
 
   return tasks.map(task => {
+    // Неактивна задача (цял навик или всичките ѝ под-елементи) не се пропуска
+    if (task.habitInactive || isEntirelyInactive(task)) return task;
     // Не пипаме вече финализирани задачи
     if (['completed', 'missed'].includes(task.status)) return task;
     // Всички изпълнения/подзадачи направени → задачата е завършена

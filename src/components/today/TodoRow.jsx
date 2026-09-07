@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getEffectiveStatus, getProgressText, isTaskCompleted } from '../../utils/habitUtils';
+import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive, computeTodoStatus } from '../../utils/habitUtils';
 import TaskActions from './TaskActions';
 import TodoModal from './TodoModal';
 
@@ -36,9 +36,32 @@ export default function TodoRow({
   const status = getEffectiveStatus(todo);
   const progressText = getProgressText(todo);
   const hasNote = !!(todo.note && todo.note.trim());
+  const inert = !!todo.inactive || isEntirelyInactive(todo);
 
   let statusIcon = '⏱', statusText = 'Предстоящо';
   if (status === 'partial') { statusIcon = '⏳'; statusText = 'В процес'; }
+  else if (status === 'inactive' || inert) { statusIcon = '⏸'; statusText = 'Неактивна'; }
+
+  const toggleElFlag = (el) => {
+    if (!el.inactive) return { ...el, inactive: true };
+    const copy = { ...el };
+    delete copy.inactive;
+    return copy;
+  };
+  const handleToggleInactive = ({ scope, index }) => {
+    let updated;
+    if (scope === 'task') {
+      updated = { ...actionTodo, inactive: !actionTodo.inactive };
+    } else if (scope === 'completion') {
+      updated = { ...actionTodo, completions: (actionTodo.completions ?? []).map(c => c.index === index ? toggleElFlag(c) : c) };
+    } else {
+      updated = { ...actionTodo, subtasks: (actionTodo.subtasks ?? []).map(s => s.index === index ? toggleElFlag(s) : s) };
+    }
+    updated.status = computeTodoStatus(updated);
+    if (updated.status !== 'completed') updated.completedAt = null;
+    onSave(updated);
+    setActionTodo(updated);
+  };
 
   // ── Инлайн бележка (записва при клик извън полето) ──
   useEffect(() => {
@@ -102,9 +125,9 @@ export default function TodoRow({
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      className={`w-full bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200 rounded-xl shadow-md p-4 transition-all hover:shadow-lg ${
-        isDragging ? 'opacity-50 scale-95' : ''
-      } ${completing ? 'animate-todo-done line-through' : ''}`}
+      className={`w-full border rounded-xl shadow-md p-4 transition-all hover:shadow-lg ${
+        inert ? 'bg-gray-100 border-gray-300 opacity-75' : 'bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200'
+      } ${isDragging ? 'opacity-50 scale-95' : ''} ${completing ? 'animate-todo-done line-through' : ''}`}
     >
       <div className="flex items-start gap-2">
         <span className="text-gray-400 cursor-grab active:cursor-grabbing text-lg leading-none pt-1">⋮⋮</span>
@@ -113,10 +136,15 @@ export default function TodoRow({
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <h3 className="font-bold text-gray-800 truncate">{todo.name}</h3>
+                <h3 className={`font-bold truncate ${inert ? 'text-gray-600' : 'text-gray-800'}`}>{todo.name}</h3>
                 <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-100 rounded px-1.5 py-0.5">
                   еднократна
                 </span>
+                {inert && (
+                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-200 rounded px-1.5 py-0.5">
+                    неактивна
+                  </span>
+                )}
               </div>
               <p className="text-sm text-gray-500 font-semibold">{statusIcon} {statusText}</p>
               {infoOpen && todo.description && (
@@ -203,6 +231,7 @@ export default function TodoRow({
                 task={actionTodo}
                 onUpdate={handleActionUpdate}
                 hideSkip
+                onToggleInactive={handleToggleInactive}
                 onDelete={() => { onDelete(actionTodo.id); setActionOpen(false); }}
               />
 

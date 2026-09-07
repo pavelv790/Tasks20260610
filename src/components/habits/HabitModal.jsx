@@ -38,6 +38,10 @@ const habitHasChanged = (oldHabit, oldRule, newHabit, newRule) => {
   if (oldHabit.reminderTime !== newHabit.reminderTime)  return true;
   if ((oldHabit.description ?? null) !== (newHabit.description ?? null)) return true;
   if (JSON.stringify(oldHabit.subtaskNames ?? []) !== JSON.stringify(newHabit.subtaskNames ?? [])) return true;
+  if ((oldHabit.inactive ?? false) !== (newHabit.inactive ?? false)) return true;
+  const sortNums = (a) => [...(a ?? [])].sort((x, y) => x - y);
+  if (JSON.stringify(sortNums(oldHabit.inactiveCompletions)) !== JSON.stringify(sortNums(newHabit.inactiveCompletions))) return true;
+  if (JSON.stringify(sortNums(oldHabit.inactiveSubtasks)) !== JSON.stringify(sortNums(newHabit.inactiveSubtasks))) return true;
   return ruleHasChanged(oldRule, newRule);
 };
 
@@ -53,6 +57,13 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
   const [reminderTime,  setReminderTime]  = useState(habit?.reminderTime  ?? null);
   const [color,         setColor]         = useState(habit?.color ?? COLORS[Math.floor(Math.random() * COLORS.length)]);
   const [description,   setDescription]   = useState(habit?.description   ?? '');
+
+  // ── Неактивност ──────────────────────────────────────
+  const [inactive,            setInactive]            = useState(habit?.inactive            ?? false);
+  const [inactiveCompletions, setInactiveCompletions] = useState(habit?.inactiveCompletions ?? []);
+  const [inactiveSubtasks,    setInactiveSubtasks]    = useState(habit?.inactiveSubtasks    ?? []);
+  const toggleInList = (list, setList, idx) =>
+    setList(list.includes(idx) ? list.filter(i => i !== idx) : [...list, idx]);
 
   // ── Форма — правило ──────────────────────────────────
   const [ruleType,       setRuleType]       = useState(existingRule?.type          ?? 'simple');
@@ -99,12 +110,14 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
   const buildObjects = () => {
     const habitId = habit?.id ?? generateId('habit');
 
+    const times = Math.max(1, parseInt(timesPerDay) || 1);
+
     const newHabit = {
       id:           habitId,
       name:         name.trim(),
       color,
       isDefault,
-      timesPerDay:  Math.max(1, parseInt(timesPerDay) || 1),
+      timesPerDay:  times,
       subtasksCount: subtaskNames.length,
       subtaskNames,
       reminderTime: reminderTime || null,
@@ -112,6 +125,9 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
       createdAt:    habit?.createdAt ?? Date.now(),
       order:        habit?.order     ?? 999,
       manualOrder:  habit?.manualOrder ?? undefined,
+      inactive,
+      inactiveCompletions: [...inactiveCompletions].filter(i => i >= 1 && i <= times).sort((a, b) => a - b),
+      inactiveSubtasks:    [...inactiveSubtasks].filter(i => i >= 1 && i <= subtaskNames.length).sort((a, b) => a - b),
     };
 
     const ruleChanged = ruleHasChanged(existingRule, {
@@ -251,6 +267,70 @@ onFocus={e => e.target.select()}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Подзадачи</label>
               <SubtaskEditor names={subtaskNames} onChange={setSubtaskNames} />
+            </div>
+
+            {/* Активност */}
+            <div className="border-2 border-gray-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-semibold text-gray-700">Задачата е неактивна</span>
+                  <p className="text-xs text-gray-500">Вижда се в „Днес", но е заключена и не се брои.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setInactive(p => !p)}
+                  className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${inactive ? 'bg-gradient-to-r from-slate-500 to-slate-600' : 'bg-gray-300'}`}
+                >
+                  <span className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-md transition-all duration-300 ${inactive ? 'translate-x-6' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
+              {!inactive && Math.max(1, parseInt(timesPerDay) || 1) > 1 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-1">Неактивни повторения</p>
+                  <div className="flex flex-wrap gap-2">
+                    {Array.from({ length: Math.max(1, parseInt(timesPerDay) || 1) }, (_, i) => i + 1).map(n => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => toggleInList(inactiveCompletions, setInactiveCompletions, n)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                          inactiveCompletions.includes(n)
+                            ? 'bg-slate-500 text-white line-through'
+                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!inactive && subtaskNames.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-1">Неактивни подзадачи</p>
+                  <div className="space-y-1">
+                    {subtaskNames.map((nm, i) => {
+                      const idx = i + 1;
+                      const off = inactiveSubtasks.includes(idx);
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => toggleInList(inactiveSubtasks, setInactiveSubtasks, idx)}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-between ${
+                            off ? 'bg-slate-500 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                          }`}
+                        >
+                          <span className={off ? 'line-through' : ''}>{nm || `Подзадача ${idx}`}</span>
+                          <span className="text-xs">{off ? '⏸ неактивна' : '▶ активна'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Напомняне */}

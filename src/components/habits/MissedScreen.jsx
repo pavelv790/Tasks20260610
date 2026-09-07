@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { toMidnight, formatDate } from '../../utils/dateUtils';
-import { isTaskCompleted } from '../../utils/habitUtils';
+import { isTaskCompleted, isEntirelyInactive } from '../../utils/habitUtils';
 
 const PERIODS = [
   { id: 'all',   label: 'Всички' },
@@ -28,6 +28,7 @@ export default function MissedScreen({ habits, tasks, onNavigateToCalendar }) {
     return tasks
       .filter(t => {
         if (t.status !== 'missed' && t.status !== 'partial') return false;
+        if (t.habitInactive || isEntirelyInactive(t)) return false;
         if (isTaskCompleted(t)) return false;
         if (t.makeupFromDate) return false;
         if (t.makeupForDate) {

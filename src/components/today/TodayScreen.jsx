@@ -2,14 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Search, Plus } from 'lucide-react';
 import { formatDate, formatDisplayDateWithToday, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight } from '../../utils/dateUtils';
 import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerator';
-import { getEffectiveStatus, getProgressText, isTaskCompleted } from '../../utils/habitUtils';
+import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive } from '../../utils/habitUtils';
 import { getCalendarDayState } from '../../utils/calendarStates';
 import TaskActions from './TaskActions';
 import TodoRow from './TodoRow';
 import TodoModal from './TodoModal';
 import Toast from '../ui/Toast';
 
-export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksUpdate, onTaskNoteUpdate, onHabitsReorder, onTodoSave, onTodoDelete, dayOrders, onDayOrdersChange }) {
+export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksUpdate, onTaskNoteUpdate, onHabitsReorder, onTodoSave, onTodoDelete, onHabitInactivityChange, dayOrders, onDayOrdersChange }) {
   const [selectedDate,   setSelectedDate]   = useState(new Date());
   const [showDayModal,   setShowDayModal]   = useState(false);
   const [selectedEntry,  setSelectedEntry]  = useState(null);
@@ -144,18 +144,40 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
     const task  = tasksForDate.find(t => t.habitId === ref.id);
     if (!habit || !task) return null;
     const status = getEffectiveStatus(task);
-    if (status === 'completed' && !task.makeupFromDate) return null;
-    if (isTaskCompleted(task) && task.makeupFromDate) return null;
-    if (task.makeupForDate) {
-      const makeupTask = tasks.find(t => t.date === task.makeupForDate && t.habitId === ref.id);
-      if (makeupTask && isTaskCompleted(makeupTask)) return null;
+    const isInert = (!!habit.inactive || isEntirelyInactive(task)) && !isTaskCompleted(task);
+    if (!isInert) {
+      if (status === 'completed' && !task.makeupFromDate) return null;
+      if (isTaskCompleted(task) && task.makeupFromDate) return null;
+      if (task.makeupForDate) {
+        const makeupTask = tasks.find(t => t.date === task.makeupForDate && t.habitId === ref.id);
+        if (makeupTask && isTaskCompleted(makeupTask)) return null;
+      }
     }
-    return { kind: 'habit', id: ref.id, habit, task, status };
+    return { kind: 'habit', id: ref.id, habit, task, status, isInert };
   }).filter(Boolean);
 
   const filteredItems = isSearching
     ? items.filter(it => (it.kind === 'habit' ? it.habit.name : it.todo.name).toLowerCase().includes(q))
     : items;
+
+  // Живи обекти за отворения прозорец (за да реагира веднага на промени в неактивността)
+  const modalHabit = selectedEntry ? (habits.find(h => h.id === selectedEntry.habit.id) ?? selectedEntry.habit) : null;
+  const modalTask  = selectedEntry ? (tasks.find(t => t.id === selectedEntry.task.id) ?? selectedEntry.task) : null;
+
+  const handleToggleInactive = ({ scope, index }) => {
+    if (!modalHabit || !onHabitInactivityChange) return;
+    let patch;
+    if (scope === 'task') {
+      patch = { inactive: !modalHabit.inactive };
+    } else if (scope === 'completion') {
+      const cur = modalHabit.inactiveCompletions ?? [];
+      patch = { inactiveCompletions: cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index] };
+    } else {
+      const cur = modalHabit.inactiveSubtasks ?? [];
+      patch = { inactiveSubtasks: cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index] };
+    }
+    onHabitInactivityChange(modalHabit.id, patch);
+  };
 
   const handleTaskUpdate = (updatedTask) => {
     const withNote = modalNote !== (updatedTask.note || '')
@@ -376,6 +398,50 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
               );
             }
             const { habit, task, status } = it;
+
+            if (it.isInert) {
+              return (
+                <div
+                  key={task.id}
+                  draggable={!isSearching}
+                  onDragStart={e => !isSearching && handleDragStart(e, habit.id)}
+                  onDragOver={e => !isSearching && e.preventDefault()}
+                  onDrop={e => !isSearching && handleDrop(e, habit.id)}
+                  className={`w-full bg-gray-100 border border-gray-300 rounded-xl shadow-md p-4 transition-all opacity-75 ${draggedId === habit.id ? 'opacity-50 scale-95' : ''}`}
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="text-gray-400 cursor-grab active:cursor-grabbing text-lg leading-none pt-1">⋮⋮</span>
+                    <div
+                      className="flex-1 min-w-0 text-left cursor-pointer"
+                      onClick={() => { setSelectedEntry({ habit, task }); setModalNote(task.note || ''); setShowDayModal(true); }}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="font-bold text-gray-600 truncate">{habit.name}</h3>
+                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-200 rounded px-1.5 py-0.5">
+                          неактивна
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 font-semibold">⏸ Неактивна</p>
+                    </div>
+                    <div className="flex flex-col gap-0.5 ml-1">
+                      <button
+                        onClick={() => moveItem(habit.id, -1)}
+                        disabled={isSearching || idx === 0}
+                        className="p-0.5 hover:bg-white hover:bg-opacity-50 rounded transition-colors disabled:opacity-30 text-xs leading-none"
+                        title="Премести нагоре"
+                      >▲</button>
+                      <button
+                        onClick={() => moveItem(habit.id, 1)}
+                        disabled={isSearching || idx === filteredItems.length - 1}
+                        className="p-0.5 hover:bg-white hover:bg-opacity-50 rounded transition-colors disabled:opacity-30 text-xs leading-none"
+                        title="Премести надолу"
+                      >▼</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
             const progressText = getProgressText(task);
             const activeRule = rules.find(r => r.habitId === habit.id && r.isActive);
             const dayState = getCalendarDayState(selectedDate, task, activeRule);
@@ -394,6 +460,7 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
             if (status === 'partial') { statusIcon = '⏳'; statusText = 'В процес'; }
             else if (status === 'makeup') { statusIcon = '↻'; statusText = 'Наваксване'; }
             else if (status === 'missed') { statusIcon = '✗'; statusText = 'Пропуснато'; }
+            else if (status === 'inactive') { statusIcon = '⏸'; statusText = 'Неактивна'; }
 
             return (
               <div key={task.id} draggable={!isSearching}
@@ -530,30 +597,31 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-800">{selectedEntry.habit.name}</h2>
+                  <h2 className="text-xl font-bold text-gray-800">{modalHabit.name}</h2>
                   <p className="text-sm text-gray-500">{formatDisplayDateWithToday(selectedDate)}</p>
                 </div>
                 <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">✕</button>
               </div>
 
-              {selectedEntry.task.makeupFromDate && (
+              {modalTask.makeupFromDate && (
                 <div className="bg-orange-100 border-2 border-orange-400 rounded-xl p-4 mb-4">
                   <p className="font-bold text-orange-800">↻ Наваксване</p>
-                  <p className="text-sm text-orange-700">За дата: {selectedEntry.task.makeupFromDate}</p>
+                  <p className="text-sm text-orange-700">За дата: {modalTask.makeupFromDate}</p>
                 </div>
               )}
 
-              {selectedEntry.task.makeupForDate ? (
+              {modalTask.makeupForDate ? (
                 <div className="bg-orange-100 border-2 border-orange-400 rounded-xl p-4 text-center">
                   <div className="text-4xl mb-2">🔒</div>
                   <p className="font-bold text-orange-800">Този ден се наваксва</p>
-                  <p className="text-sm text-orange-700 mt-1">На: {selectedEntry.task.makeupForDate}</p>
+                  <p className="text-sm text-orange-700 mt-1">На: {modalTask.makeupForDate}</p>
                 </div>
               ) : (
                 <TaskActions
-                  task={selectedEntry.task}
+                  task={modalTask}
                   onUpdate={handleTaskUpdate}
-                  isMakeup={!!selectedEntry.task.makeupFromDate}
+                  isMakeup={!!modalTask.makeupFromDate}
+                  onToggleInactive={onHabitInactivityChange ? handleToggleInactive : null}
                 />
               )}
 

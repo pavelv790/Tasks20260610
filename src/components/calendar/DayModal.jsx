@@ -7,7 +7,7 @@ import { checkMissedTasks } from '../../utils/taskGenerator';
 import TaskActions from '../today/TaskActions';
 import MakeupPicker from './MakeupPicker';
 
-export default function DayModal({ date, task, habit, allTasks, rules, onTasksUpdate, onClose }) {
+export default function DayModal({ date, task, habit, allTasks, rules, onTasksUpdate, onHabitInactivityChange, onClose }) {
   const [showMakeupPicker,   setShowMakeupPicker]   = useState(false);
   const [showUnlinkedPicker, setShowUnlinkedPicker] = useState(false);
   const [note, setNote] = useState(task?.note || '');
@@ -48,6 +48,21 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
       else updated.push(t);
     });
     onTasksUpdate(checkMissedTasks(updated));
+  };
+
+  const handleToggleInactive = ({ scope, index }) => {
+    if (!onHabitInactivityChange || !habit) return;
+    let patch;
+    if (scope === 'task') {
+      patch = { inactive: !habit.inactive };
+    } else if (scope === 'completion') {
+      const cur = habit.inactiveCompletions ?? [];
+      patch = { inactiveCompletions: cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index] };
+    } else {
+      const cur = habit.inactiveSubtasks ?? [];
+      patch = { inactiveSubtasks: cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index] };
+    }
+    onHabitInactivityChange(habit.id, patch);
   };
 
   const handleReset = () => {
@@ -212,6 +227,7 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
                 task={task}
                 onUpdate={t => { handleTaskUpdate(t); onClose(); }}
                 isMakeup={false}
+                onToggleInactive={onHabitInactivityChange ? handleToggleInactive : null}
               />
               <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
                 {task?.status !== 'completed' && (
@@ -314,9 +330,10 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
                 task={task}
                 onUpdate={t => { handleTaskUpdate(t); onClose(); }}
                 isMakeup={false}
+                onToggleInactive={onHabitInactivityChange ? handleToggleInactive : null}
               />
               <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
-                {!task?.makeupForDate && task?.status !== 'completed' && (
+                {!task?.makeupForDate && task?.status !== 'completed' && !task?.habitInactive && (
                 <button
                   onClick={() => setShowMakeupPicker(true)}
                   className="w-full py-2 bg-gradient-to-r from-orange-400 to-orange-500 text-white rounded-xl font-semibold text-sm hover:shadow-lg"

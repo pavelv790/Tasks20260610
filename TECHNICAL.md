@@ -152,7 +152,12 @@ IndexedDB (историческо: до 2026-09-07 имаше един ключ 
                                 //   от SubtaskEditor, не се въвежда отделно.
   subtaskNames: string[],       // празен елемент "" се показва като „Подзадача N“
   reminderTime: "HH:MM" | null,  // за нотификации
-  manualOrder?: number
+  manualOrder?: number,
+
+  // ── Неактивност (виж раздел 4.8) — по избор, обратно съвместими ──
+  inactive?: boolean,            // цялата задача е неактивна (заключена, не се брои)
+  inactiveCompletions?: number[],// индекси (1-базирани) на неактивни повторения
+  inactiveSubtasks?: number[]    // индекси (1-базирани) на неактивни подзадачи
 }
 ```
 
@@ -187,8 +192,8 @@ IndexedDB (историческо: до 2026-09-07 имаше един ключ 
   date: "YYYY-MM-DD",
   status: "pending" | "partial" | "completed" | "missed" | "makeup",
 
-  completions: [ { index: 1, completed: bool, timestamp } , ... ],  // само ако timesPerDay > 1
-  subtasks:    [ { index: 1, name, completed: bool, timestamp } , ... ], // само ако subtasksCount > 0
+  completions: [ { index: 1, completed: bool, timestamp, inactive?: true } , ... ],  // само ако timesPerDay > 1
+  subtasks:    [ { index: 1, name, completed: bool, timestamp, inactive?: true } , ... ], // само ако subtasksCount > 0
 
   makeupForDate:  "YYYY-MM-DD" | null,   // „този ден се наваксва на друга дата“
   makeupFromDate: "YYYY-MM-DD" | null,   // „този ден Е наваксване за друга (пропусната) дата“
@@ -196,10 +201,16 @@ IndexedDB (историческо: до 2026-09-07 имаше един ключ 
   createdBy: "rule" | "manual",
   ruleId: "rule_..." | null,
   manuallyReset?: true,   // потребителят ръчно е нулирал → checkMissedTasks не го пипа
+  habitInactive?: true,   // подпечатано от дефиницията: целият навик е неактивен (виж 4.8)
   note?: string,
   completedAt?: string
 }
 ```
+
+`inactive` на елемент от `completions`/`subtasks` и `habitInactive` на задачата се
+**подпечатват от дефиницията на навика** (`habit.inactive` / `inactiveCompletions` /
+`inactiveSubtasks`) при генериране (`createTaskObject`) и при превключване — само за
+задачи с `date >= днес`. Миналото не се пипа. Виж раздел 4.8.
 
 **Важно:** `status` е записан низ, но „истината“ за прогреса е в масивите
 `completions` / `subtasks`. На много места UI-ът смята статуса динамично
@@ -214,9 +225,10 @@ IndexedDB (историческо: до 2026-09-07 имаше един ключ 
   timesPerDay: number,           // ≥ 1
   subtasksCount: number,         // ≥ 0. ВИНАГИ === subtaskNames.length (изведено от SubtaskEditor)
   subtaskNames: string[],        // празен елемент "" се показва като „Подзадача N“
-  completions: [ { index, completed, timestamp }, ... ],  // само ако timesPerDay > 1
-  subtasks:    [ { index, name, completed, timestamp }, ... ], // само ако subtasksCount > 0
+  completions: [ { index, completed, timestamp, inactive?: true }, ... ],  // само ако timesPerDay > 1
+  subtasks:    [ { index, name, completed, timestamp, inactive?: true }, ... ], // само ако subtasksCount > 0
   status: "pending" | "partial" | "completed",
+  inactive?: boolean,            // цялата еднократна задача е неактивна (виж 4.8)
   note: string,                  // бележка (инлайн 📝 на реда + поле в прозореца за действия)
   createdAt: number,             // Date.now()
   order: number,                 // за ръчно пренареждане; по подразбиране = createdAt.
@@ -238,6 +250,10 @@ IndexedDB (историческо: до 2026-09-07 имаше един ключ 
   подредба в „Днес“ е общата `dayOrders[dateStr]` (виж 4.7).
 - Отмятането ползва същия `TaskActions` (с `hideSkip` — без „Пропусни“; и `onDelete`).
   „Нулирай задачата“ може да добави `manuallyReset: true` към todo обекта — без ефект.
+- **Неактивност** (раздел 4.8) важи и тук: `todo.inactive` (цялата) + `inactive` на
+  елементите. Превключва се от прозореца за действия (`TodoRow` пише директно чрез
+  `onSave`) и от `TodoModal` (секция „Активност“). `computeTodoStatus` връща `pending`
+  за неактивна еднократна задача, за да не се чисти при зареждане.
 - При пълно изпълнение: `TodoRow` вика `onComplete(snapshot)`; `TodayScreen` слага
   `completingTodoId` (редът остава видим ~1.15 s с `animate-todo-done`), после показва
   `Toast` „Изпълнена“ с бутон „Върни“ (5 s). „Върни“ → `onTodoSave(snapshot)` (връща
@@ -314,6 +330,8 @@ IndexedDB (историческо: до 2026-09-07 имаше един ключ 
 
 ### 4.2 Маркиране на „пропуснати“ — `checkMissedTasks(tasks)`
 Минава през всички задачи и за всяка:
+0. ако `task.habitInactive` ИЛИ `isEntirelyInactive(task)` (всичките под-елементи
+   неактивни) → **не пипа** (неактивна задача не става „пропусната“); *(добавено 2026-09-07)*
 1. ако `status` е вече `completed` или `missed` → **не пипа**;
 2. ако `isTaskCompleted(task)` (всички completions/subtasks направени) →
    `status = "completed"` *(добавено при поправката от 2026-09-01 — виж раздел 7)*;
@@ -347,17 +365,25 @@ IndexedDB (историческо: до 2026-09-07 имаше един ключ 
 | C12 | Makeup + всички изпълнения |
 | C13 | Makeup + подзадачи частично |
 | C14 | Отработен ден „без връзка“ (ръчно, извън правилото) |
+| C15 | Неактивна задача (сиво, без рамка) — `habitInactive` или всички под-елементи неактивни, и денят още НЕ е завършен (завършен ден си остава C4/C9). Виж 4.8 |
 
 За многократни задачи логиката тук брои коректно:
 `done = completions.filter(c => c.completed).length`, `allDone = done === total`.
+Неактивните `completions`/`subtasks` не се броят в `total`/`done` — виж 4.8.
 
 ### 4.4 Статус-помощници — `habitUtils.js`
-- `isTaskCompleted(task)` — **проверява ВСИЧКИ**: `completions.every(c => c.completed)`;
-  ако няма completions → `subtasks.every(...)`; инак `status === "completed"`.
-- `hasTaskProgress(task)` — има ли **поне едно** отметнато.
+- `isTaskCompleted(task)` — **проверява всички АКТИВНИ**: `completions.filter(c=>!c.inactive).every(...)`;
+  ако всички completions са неактивни → пада към активните `subtasks`; инак `status === "completed"`.
+  Ако няма нито едно активно нещо за правене → `false` (не се брои за завършена).
+- `hasTaskProgress(task)` — има ли **поне едно активно** отметнато.
 - `getEffectiveStatus(task)` — динамичен статус за визуализация
-  (`completed` / `partial` / `missed` / `makeup` / `pending`), смятан от масивите.
-- `getProgressText(task)` — текст „2/3“.
+  (`completed` / `partial` / `missed` / `makeup` / `pending` / **`inactive`**), смятан от масивите.
+  `inactive` се връща само ако задачата е неактивна И още не е завършена.
+- `getProgressText(task)` — текст „2/3“ (числителят и знаменателят броят само активните).
+- `hasActiveRequirements(task)` / `isEntirelyInactive(task)` — има ли активни под-елементи /
+  напълно ли е неактивна (виж 4.8).
+- `syncTaskInactivity(task, habit)` — пренася `habit.inactive` / `inactiveCompletions` /
+  `inactiveSubtasks` върху `task.habitInactive` и `.inactive` на елементите.
 
 ### 4.5 Отмятане — `TaskActions.jsx`
 - `toggleCompletion(index)` — обръща едно изпълнение; после
@@ -371,6 +397,49 @@ IndexedDB (историческо: до 2026-09-07 имаше един ключ 
   `manuallyReset: true`.
 - Props `hideSkip` (крие бутона „Пропусни“) и `onDelete` (показва „Изтрий задачата“) —
   ползват се от `TodoRow` за еднократните задачи; при обикновените задачи не се подават.
+- Prop `onToggleInactive({ scope: 'task'|'completion'|'subtask', index })` — ако е подаден,
+  показва контроли за „неактивно“ (заключени редове + „⏸ Направи неактивна“ /
+  „▶ Върни активно“ / „⏸ Направи задачата неактивна“). Всички бутони за отмятане
+  („Отбележи всички“, авто-преминаване към следващо completion) работят само с
+  активните елементи. Виж раздел 4.8.
+
+### 4.8 Неактивност — „заключи, но остави видимо“
+
+**Идея:** дадена задача, повторение или подзадача може да се маркира като
+**неактивна** — вижда се в „Днес“, но е заключена (единственото действие е „▶ Върни
+активно“), не се брои за завършване и не става „пропусната“ / не влиза в
+статистиката. Пример: подзадача „лекарство Х“ става неактивна, докато го няма →
+задачата „взимам лекарства“ пак може да се завърши без нея.
+
+**Модел (източник на истината = дефиницията на навика):**
+`habit.inactive` (цялата задача) · `habit.inactiveCompletions: number[]` ·
+`habit.inactiveSubtasks: number[]` (1-базирани индекси). За еднократните задачи
+флаговете живеят направо на `todo` (`todo.inactive` + `inactive` на елементите),
+защото са за един ден.
+
+**Подпечатване върху инстанциите:** `createTaskObject` и `syncTaskInactivity`
+пренасят това върху `task.habitInactive` и `task.completions[i].inactive` /
+`task.subtasks[i].inactive`, за да работят helper-ите без да им подаваме `habit`.
+
+**Forward-only:** превключване от прозореца за действия (`TodayScreen` / `DayModal`)
+вика `App.handleHabitInactivityChange(habitId, patch)`, който обновява дефиницията и
+пре-подпечатва **само** задачите с `date >= днес`. Миналото остава непокътнато.
+Редакцията през `HabitModal` също прилага неактивността само за днес и напред
+(в reconcile клона на `handleHabitSave`).
+
+**Ефекти:**
+- `isTaskCompleted` / `getEffectiveStatus` / `getProgressText` / `computeTodoStatus`
+  броят само активните елементи; „завърши всички“ пропуска неактивните.
+- `checkMissedTasks` прескача `habitInactive` / напълно неактивни задачи (раздел 4.2).
+- `calendarStates` → C15 „Неактивна“ (сиво, без рамка), но само ако денят още не е
+  завършен — вече завършен ден си остава C4/C9.
+- `TodayScreen`: неактивната задача е сива заключена карта с етикет „НЕАКТИВНА“;
+  завършена задача с неактивен навик пак се скрива (не се показва).
+- `StatisticsScreen`: дните с `habitInactive` / напълно неактивни се изключват от
+  числител, знаменател, процент и поредица; ако целият навик е неактивен → показва
+  „Задачата е неактивна“ вместо числата.
+- `MissedScreen`: изключва `habitInactive` / напълно неактивни.
+- `HabitCard`: показва „⏸ Неактивна“ или „⏸ Частично неактивна“.
 
 ### 4.6 Смяна на правило — `applyRuleChange(...)`
 Два режима: „само за бъдещи дати“ и „за всички дати“. И в двата: пазят се само
@@ -407,6 +476,7 @@ IndexedDB (историческо: до 2026-09-07 имаше един ключ 
 ```
 за всяка task t:
   1. ако t.status НЕ е 'missed' И НЕ е 'partial' → изключи
+  1б. ако t.habitInactive ИЛИ isEntirelyInactive(t) → изключи (2026-09-07 — виж 4.8)
   2. ако isTaskCompleted(t) → изключи   (добавено 2026-09-01 — виж раздел 7)
   3. ако t.makeupFromDate (t е makeup ден) → изключи
   4. ако t.makeupForDate: намери задачата на датата за наваксване;
@@ -464,6 +534,42 @@ IndexedDB (историческо: до 2026-09-07 имаше един ключ 
 ---
 
 ## 7. История на поправките
+
+### 2026-09-07 — Неактивност (задача / повторение / подзадача)
+
+**Какво:** задача, отделно повторение или подзадача може да се маркира като
+**неактивна** — вижда се в „Днес“, но е заключена, не се брои за завършване и не
+става „пропусната“ / извън статистиката. Реверсивно („▶ Върни активно“). Важи и за
+еднократните задачи. Пълно описание — раздел 4.8.
+
+**Подход:** източник на истината е дефиницията на навика (`habit.inactive` /
+`inactiveCompletions` / `inactiveSubtasks`); подпечатва се върху task инстанциите
+(`task.habitInactive` + `inactive` на елементите) чрез `syncTaskInactivity`, за да
+работят наличните helper-и без промяна на сигнатурите им. Превключването важи само
+за днес и напред — миналото не се пипа.
+
+| Файл | Промяна |
+|------|---------|
+| `src/utils/habitUtils.js` | нови `syncTaskInactivity`, `hasActiveRequirements`, `isEntirelyInactive`; `isTaskCompleted` / `hasTaskProgress` / `getProgressText` / `getEffectiveStatus` / `computeTodoStatus` броят само активните елементи; `getEffectiveStatus` връща и `'inactive'`; `createTaskObject` подпечатва от дефиницията; `buildTodoArrays` пази `inactive` при редакция |
+| `src/utils/taskGenerator.js` | `checkMissedTasks` прескача `habitInactive` / напълно неактивни задачи |
+| `src/utils/calendarStates.js` | ново състояние **C15** „Неактивна“ (сиво, без рамка); завършен ден си остава C4/C9 |
+| `src/App.jsx` | нов `handleHabitInactivityChange(habitId, patch)` (forward-only пач); подава се към `TodayScreen` и `CalendarScreen`; `handleHabitSave` reconcile клон вика `syncTaskInactivity` само за `date >= днес`; `isTaskMeaningful` разпознава неактивните флагове |
+| `src/components/today/TaskActions.jsx` | нов prop `onToggleInactive`; заключени редове + бутони „⏸/▶“; изглед „цялата задача е неактивна“; „завърши всички“ / авто-преминаване работят само с активните |
+| `src/components/today/TodayScreen.jsx` | сива заключена карта + етикет „НЕАКТИВНА“; `handleToggleInactive`; живи `modalHabit`/`modalTask` за отворения прозорец |
+| `src/components/today/TodoRow.jsx` | заключен изглед за неактивна еднократна задача; `onToggleInactive` пише директно чрез `onSave` |
+| `src/components/today/TodoModal.jsx` | секция „Активност“ (превключвател + списъци за повторения/подзадачи) |
+| `src/components/habits/HabitModal.jsx` | секция „Активност“; `buildObjects` + `habitHasChanged` за новите полета |
+| `src/components/calendar/CalendarScreen.jsx`, `DayModal.jsx` | подават/ползват `onHabitInactivityChange`; `TaskActions` получава `onToggleInactive` |
+| `src/components/statistics/StatisticsScreen.jsx` | изключва неактивните дни от всички метрики; „Задачата е неактивна“ при `habit.inactive` |
+| `src/components/habits/MissedScreen.jsx` | изключва `habitInactive` / напълно неактивни |
+| `src/components/habits/HabitCard.jsx` | етикет „⏸ Неактивна“ / „⏸ Частично неактивна“ |
+| `src/components/ui/HelpModal.jsx` | нова секция „⏸ Неактивни задачи, повторения и подзадачи“ |
+
+**Проверка:** `npm run build` минава. `npm run lint` — без нови грешки (само отпреди
+съществуващите). Ръчно в браузър: неактивна подзадача (задачата се завършва без нея,
+брои „0/2“), цяла задача неактивна (сива карта + C15 в календара, реактивиране от
+`DayModal`), еднократна задача с неактивна подзадача (завършва без нея), завършен ден
+преди деактивиране си остава зелен.
 
 ### 2026-09-07 — Профили (различни независими контексти)
 
@@ -671,6 +777,7 @@ app switcher-а, особено на iPhone) и го отвори пак 1–2 �
 | Списък / подредба в екран „Задачи“ | `components/habits/HabitsScreen.jsx`, `HabitCard.jsx` |
 | Екран „Днес“ | `components/today/TodayScreen.jsx` (и `App.jsx`, ако е свързано с `dayOrders`) |
 | Завършване / пропускане / нулиране на задача | `components/today/TaskActions.jsx` |
+| Неактивност (задача / повторение / подзадача; навици + еднократни) | `utils/habitUtils.js` (`syncTaskInactivity`, `isEntirelyInactive`, `hasActiveRequirements`), `App.jsx` (`handleHabitInactivityChange`), `components/today/TaskActions.jsx` (`onToggleInactive`), `HabitModal.jsx` / `TodoModal.jsx` (секция „Активност“), `TodayScreen.jsx` / `calendar/DayModal.jsx` (превключване от прозореца за действия), `utils/calendarStates.js` (C15), `utils/taskGenerator.js`, `StatisticsScreen.jsx`, `MissedScreen.jsx`, `HabitCard.jsx` — виж раздел 4.8 |
 | Еднократни задачи — ред, действия, бележка, анимация | `components/today/TodoRow.jsx`, `TodoModal.jsx` (+ `utils/habitUtils.js`) |
 | Общ списък/подредба на „Днес“ (навици + еднократни) | `components/today/TodayScreen.jsx` (`orderedRefs`, `moveItem`, `handleDrop`) + `App.jsx` (`dayOrders`) |
 | Редактор на подзадачи (в двата модала) | `components/ui/SubtaskEditor.jsx` |
