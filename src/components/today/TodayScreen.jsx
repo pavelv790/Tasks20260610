@@ -167,7 +167,7 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
   const handleToggleInactive = ({ scope, index }) => {
     if (!modalHabit || !onHabitInactivityChange) return;
     let patch;
-    let reactivating;   // ⏸→▶ (връщане към активно) → затваряме прозореца
+    let reactivating;
     if (scope === 'task') {
       reactivating = !!modalHabit.inactive;
       patch = { inactive: !modalHabit.inactive };
@@ -181,9 +181,11 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
       patch = { inactiveSubtasks: cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index] };
     }
     onHabitInactivityChange(modalHabit.id, patch);
-    // „Направи неактивна" оставя прозореца отворен (има надпис за четене);
-    // „Върни активна" го затваря — като при отмятане (виж handleTaskUpdate).
-    if (reactivating) setTimeout(() => closeModal(), 300);
+    // Прозорецът остава отворен САМО при „направи цялата задача неактивна" — там излиза
+    // важен надпис. Всичко друго (брой изпълнения / подзадачи; всяко „върни активно")
+    // затваря, като при отмятане (виж handleTaskUpdate).
+    const keepOpen = scope === 'task' && !reactivating;
+    if (!keepOpen) setTimeout(() => closeModal(), 300);
   };
 
   const handleTaskUpdate = (updatedTask) => {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive, computeTodoStatus } from '../../utils/habitUtils';
+import { getCalendarDayState } from '../../utils/calendarStates';
 import TaskActions from './TaskActions';
 import TodoModal from './TodoModal';
 
@@ -38,6 +39,24 @@ export default function TodoRow({
   const hasNote = !!(todo.note && todo.note.trim());
   const inert = !!todo.inactive || isEntirelyInactive(todo);
 
+  // ── Цветове „като при обикновените задачи" — през същия getCalendarDayState.
+  //    Еднократната задача няма правило → подава се rule=null; датата не влияе на
+  //    резултата за todo (важи само „обикновен ден": pending/partial/completed). ──
+  const dayState = inert ? null : getCalendarDayState(new Date(`${dateStr}T00:00:00`), todo, null);
+  const isLight = !dayState
+    || dayState.bgColor === 'bg-gray-50'
+    || dayState.bgColor.includes('from-white')
+    || dayState.bgColor === 'bg-white';
+  const textColor   = inert ? 'text-gray-600' : (isLight ? 'text-gray-800' : 'text-white');
+  const statusColor = inert ? 'text-gray-500' : (isLight ? 'text-gray-600' : 'text-white');
+  const bgClass = inert
+    ? 'bg-gray-100 border border-gray-300 opacity-75'
+    : (dayState.bgColor.includes('gradient') ? '' : dayState.bgColor);
+  const bgStyle = inert ? {} : {
+    ...(dayState.bgColor.includes('gradient') ? { background: 'linear-gradient(to bottom right, white, #86efac)' } : {}),
+    ...(dayState.bgColor === 'bg-white' ? { background: 'white' } : {}),
+  };
+
   let statusIcon = '⏱', statusText = 'Предстоящо';
   if (status === 'partial') { statusIcon = '⏳'; statusText = 'В процес'; }
   else if (status === 'inactive' || inert) { statusIcon = '⏸'; statusText = 'Неактивна'; }
@@ -50,7 +69,7 @@ export default function TodoRow({
   };
   const handleToggleInactive = ({ scope, index }) => {
     let updated;
-    let reactivating;   // ⏸→▶ (връщане към активно) → затваряме прозореца
+    let reactivating;
     if (scope === 'task') {
       reactivating = !!actionTodo.inactive;
       updated = { ...actionTodo, inactive: !actionTodo.inactive };
@@ -61,16 +80,18 @@ export default function TodoRow({
       reactivating = !!(actionTodo.subtasks ?? []).find(s => s.index === index)?.inactive;
       updated = { ...actionTodo, subtasks: (actionTodo.subtasks ?? []).map(s => s.index === index ? toggleElFlag(s) : s) };
     }
-    if (reactivating && modalNote !== (actionTodo.note ?? '')) {
+    // Прозорецът остава отворен САМО при „направи цялата задача неактивна" — там излиза
+    // важен надпис. Всичко друго (брой изпълнения / подзадачи; всяко „върни активно")
+    // затваря, като при отмятане (виж handleActionUpdate).
+    const keepOpen = scope === 'task' && !reactivating;
+    if (!keepOpen && modalNote !== (actionTodo.note ?? '')) {
       updated = { ...updated, note: modalNote };
     }
     updated.status = computeTodoStatus(updated);
     if (updated.status !== 'completed') updated.completedAt = null;
     onSave(updated);
     setActionTodo(updated);
-    // „Направи неактивно" оставя прозореца отворен (има надпис за четене);
-    // „Върни активно" го затваря — като при отмятане (виж handleActionUpdate).
-    if (reactivating) setTimeout(() => setActionOpen(false), 300);
+    if (!keepOpen) setTimeout(() => setActionOpen(false), 300);
   };
 
   // ── Инлайн бележка (записва при клик извън полето) ──
@@ -139,9 +160,8 @@ export default function TodoRow({
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      className={`w-full border rounded-xl shadow-md p-4 transition-all hover:shadow-lg ${
-        inert ? 'bg-gray-100 border-gray-300 opacity-75' : 'bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200'
-      } ${isDragging ? 'opacity-50 scale-95' : ''} ${completing ? 'animate-todo-done line-through' : ''}`}
+      className={`w-full ${bgClass} rounded-xl shadow-md p-4 transition-all hover:shadow-lg ${isDragging ? 'opacity-50 scale-95' : ''} ${completing ? 'animate-todo-done' : ''}`}
+      style={bgStyle}
     >
       <div className="flex items-start gap-2">
         <span className="text-gray-400 cursor-grab active:cursor-grabbing text-lg leading-none pt-1">⋮⋮</span>
@@ -150,8 +170,8 @@ export default function TodoRow({
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <h3 className={`font-bold truncate ${inert ? 'text-gray-600' : 'text-gray-800'}`}>{todo.name}</h3>
-                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-100 rounded px-1.5 py-0.5">
+                <h3 className={`font-bold truncate ${textColor}`}>{todo.name}</h3>
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-gray-600 bg-white bg-opacity-80 rounded px-1.5 py-0.5">
                   еднократна
                 </span>
                 {inert && (
@@ -160,7 +180,7 @@ export default function TodoRow({
                   </span>
                 )}
               </div>
-              <p className="text-sm text-gray-500 font-semibold">{statusIcon} {statusText}</p>
+              <p className={`text-sm ${statusColor} font-semibold`}>{statusIcon} {statusText}</p>
               {infoOpen && todo.description && (
                 <p className="text-xs mt-1 text-gray-600 bg-white bg-opacity-70 rounded-lg px-2 py-1">{todo.description}</p>
               )}
@@ -180,7 +200,7 @@ export default function TodoRow({
               )}
             </div>
             {progressText && (
-              <span className="text-lg font-bold px-3 py-1 rounded-full shadow text-gray-700 bg-white shrink-0">
+              <span className={`text-lg font-bold px-3 py-1 rounded-full shadow shrink-0 text-gray-700 ${isLight ? 'bg-white' : 'bg-white bg-opacity-80'}`}>
                 {progressText}
               </span>
             )}
