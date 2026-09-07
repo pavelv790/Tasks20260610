@@ -50,17 +50,27 @@ export default function TodoRow({
   };
   const handleToggleInactive = ({ scope, index }) => {
     let updated;
+    let reactivating;   // ⏸→▶ (връщане към активно) → затваряме прозореца
     if (scope === 'task') {
+      reactivating = !!actionTodo.inactive;
       updated = { ...actionTodo, inactive: !actionTodo.inactive };
     } else if (scope === 'completion') {
+      reactivating = !!(actionTodo.completions ?? []).find(c => c.index === index)?.inactive;
       updated = { ...actionTodo, completions: (actionTodo.completions ?? []).map(c => c.index === index ? toggleElFlag(c) : c) };
     } else {
+      reactivating = !!(actionTodo.subtasks ?? []).find(s => s.index === index)?.inactive;
       updated = { ...actionTodo, subtasks: (actionTodo.subtasks ?? []).map(s => s.index === index ? toggleElFlag(s) : s) };
+    }
+    if (reactivating && modalNote !== (actionTodo.note ?? '')) {
+      updated = { ...updated, note: modalNote };
     }
     updated.status = computeTodoStatus(updated);
     if (updated.status !== 'completed') updated.completedAt = null;
     onSave(updated);
     setActionTodo(updated);
+    // „Направи неактивно" оставя прозореца отворен (има надпис за четене);
+    // „Върни активно" го затваря — като при отмятане (виж handleActionUpdate).
+    if (reactivating) setTimeout(() => setActionOpen(false), 300);
   };
 
   // ── Инлайн бележка (записва при клик извън полето) ──
@@ -115,11 +125,15 @@ export default function TodoRow({
       setActionOpen(false);
       onComplete({ ...actionTodo, note: modalNote });   // snapshot преди отмятането
     } else {
+      // Като при обикновените задачи: след всяко отмятане (изпълнение / подзадача /
+      // „изпълнено" / „нулирай") прозорецът се затваря и се връщаме на списъка „Днес".
       setActionTodo(merged);
+      setTimeout(() => setActionOpen(false), 300);
     }
   };
 
   return (
+    <>
     <div
       draggable={draggable}
       onDragStart={onDragStart}
@@ -203,8 +217,10 @@ export default function TodoRow({
           </div>
         </div>
       </div>
+    </div>
 
-      {/* Прозорец за действия */}
+      {/* Прозорец за действия — извън реда, за да не наследи полупрозрачността
+          на неактивния ред (opacity на родител се пренася върху fixed деца) */}
       {actionOpen && actionTodo && (
         <div className="fixed inset-0 bg-gradient-to-br from-cyan-400 via-teal-300 to-emerald-300 bg-opacity-80 flex items-center justify-center p-4 z-50">
           <div className="bg-gradient-to-br from-blue-100 to-purple-100 rounded-3xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
@@ -258,6 +274,6 @@ export default function TodoRow({
           onClose={() => setEditing(false)}
         />
       )}
-    </div>
+    </>
   );
 }

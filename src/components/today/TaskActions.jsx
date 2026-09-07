@@ -198,7 +198,7 @@ export default function TaskActions({ task, onUpdate, isMakeup = false, hideSkip
                   className="w-full p-3 rounded-xl flex items-center gap-3 bg-gray-100 border-2 border-dashed border-gray-300 opacity-70"
                 >
                   <div className="w-6 h-6 rounded-full flex items-center justify-center bg-gray-300 text-white text-xs">⏸</div>
-                  <span className="font-medium text-gray-500 line-through">
+                  <span className="font-medium text-gray-500">
                     Отбележи {c.index}-{ORDINAL_SUFFIX(c.index)} път
                   </span>
                   <span className="ml-auto text-[10px] font-bold uppercase text-gray-400">неактивно</span>
@@ -258,7 +258,7 @@ export default function TaskActions({ task, onUpdate, isMakeup = false, hideSkip
                   className="w-full p-3 rounded-xl flex items-center gap-3 bg-gray-100 border-2 border-dashed border-gray-300 opacity-70"
                 >
                   <div className="w-6 h-6 rounded border-2 border-gray-300 flex items-center justify-center bg-white text-gray-400 text-xs">⏸</div>
-                  <span className="font-medium text-gray-500 line-through">
+                  <span className="font-medium text-gray-500">
                     {s.name || `Подзадача ${s.index}`}
                   </span>
                   <span className="ml-auto text-[10px] font-bold uppercase text-gray-400">неактивно</span>

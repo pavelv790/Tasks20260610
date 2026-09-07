@@ -167,16 +167,23 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
   const handleToggleInactive = ({ scope, index }) => {
     if (!modalHabit || !onHabitInactivityChange) return;
     let patch;
+    let reactivating;   // ⏸→▶ (връщане към активно) → затваряме прозореца
     if (scope === 'task') {
+      reactivating = !!modalHabit.inactive;
       patch = { inactive: !modalHabit.inactive };
     } else if (scope === 'completion') {
       const cur = modalHabit.inactiveCompletions ?? [];
+      reactivating = cur.includes(index);
       patch = { inactiveCompletions: cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index] };
     } else {
       const cur = modalHabit.inactiveSubtasks ?? [];
+      reactivating = cur.includes(index);
       patch = { inactiveSubtasks: cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index] };
     }
     onHabitInactivityChange(modalHabit.id, patch);
+    // „Направи неактивна" оставя прозореца отворен (има надпис за четене);
+    // „Върни активна" го затваря — като при отмятане (виж handleTaskUpdate).
+    if (reactivating) setTimeout(() => closeModal(), 300);
   };
 
   const handleTaskUpdate = (updatedTask) => {

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Edit2, Trash2, Archive } from 'lucide-react';
 
 export default function HabitCard({
@@ -15,12 +14,9 @@ export default function HabitCard({
   isFirst,
   isLast,
 }) {
-  const [showFullName, setShowFullName] = useState(false);
-
   const ringClass = habit.isDefault ? 'ring-2 ring-indigo-500' : '';
 
   return (
-    <>
       <div
         draggable
         onDragStart={e => onDragStart(e, habit)}
@@ -33,7 +29,7 @@ export default function HabitCard({
           <span className="text-gray-400 cursor-grab active:cursor-grabbing text-lg leading-none pt-0.5">
             ⋮⋮
           </span>
-          <div className="flex-1 cursor-pointer" onClick={() => setShowFullName(true)}>
+          <div className="flex-1 cursor-pointer" onClick={() => onEdit(habit)} title="Редактирай">
             <h3 className="font-bold text-gray-800 break-words line-clamp-2">
               {habit.name}
             </h3>
@@ -96,27 +92,5 @@ export default function HabitCard({
                 : null)}
         </div>
       </div>
-
-      {/* Попъп с пълното име */}
-      {showFullName && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
-          onClick={() => setShowFullName(false)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full"
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 className="font-bold text-gray-800 text-lg mb-4 break-words">{habit.name}</h3>
-            <button
-              onClick={() => setShowFullName(false)}
-              className="w-full px-4 py-2 bg-indigo-500 text-white rounded-xl font-semibold"
-            >
-              Затвори
-            </button>
-          </div>
-        </div>
-      )}
-    </>
   );
 }

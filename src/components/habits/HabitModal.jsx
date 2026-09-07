@@ -296,7 +296,7 @@ onFocus={e => e.target.select()}
                         onClick={() => toggleInList(inactiveCompletions, setInactiveCompletions, n)}
                         className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
                           inactiveCompletions.includes(n)
-                            ? 'bg-slate-500 text-white line-through'
+                            ? 'bg-slate-500 text-white'
                             : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
                         }`}
                       >
@@ -323,7 +323,7 @@ onFocus={e => e.target.select()}
                             off ? 'bg-slate-500 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
                           }`}
                         >
-                          <span className={off ? 'line-through' : ''}>{nm || `Подзадача ${idx}`}</span>
+                          <span>{nm || `Подзадача ${idx}`}</span>
                           <span className="text-xs">{off ? '⏸ неактивна' : '▶ активна'}</span>
                         </button>
                       );
