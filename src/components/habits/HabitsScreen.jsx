@@ -52,7 +52,7 @@ export default function HabitsScreen({ habits, rules, onSave, onDelete, onArchiv
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDragOver = (e, habit) => {
+  const handleDragOver = (e) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };

@@ -580,6 +580,63 @@ IndexedDB (историческо: до 2026-09-07 имаше един ключ 
 
 ## 7. История на поправките
 
+### 2026-09-11 — Почистване на lint грешки (нулев/нисък риск)
+
+**Какво:** премахнат мъртъв код (неизползвани props/import-и/променливи) и оправена
+единствената реална „impure render" грешка. Броят lint грешки падна от 22 на 2
+(остават 2 грешки + 7 предупреждения, съзнателно непипнати — виж раздел 6).
+
+| Файл | Промяна |
+|------|---------|
+| `src/components/today/TodayScreen.jsx` | премахнати неизползваните props `onTaskNoteUpdate`, `onHabitsReorder` (бележките минават през `onTasksUpdate`, пренареждането на навиците — през `HabitsScreen`) |
+| `src/App.jsx` | премахнато подаването на горните два prop-а + цялата вече мъртва `handleTaskNoteUpdate`; премахнати неизползвани import-и `toMidnight`, `ArchiveScreen` |
+| `src/components/calendar/DayModal.jsx` | премахнат неизползван import `generateId` |
+| `src/components/calendar/MakeupPicker.jsx` | премахнат неизползван import `isPastDate` |
+| `src/components/calendar/CalendarScreen.jsx` | премахнати неизползвани import-и `toMidnight`, `doesDateMatchRule` |
+| `src/components/habits/HabitsScreen.jsx` | премахнат неизползван параметър `habit` на `handleDragOver` |
+| `src/components/statistics/StatisticsScreen.jsx` | премахнати неизползван import `getNextRuleDate` и променлива `ruleDaysSet` |
+| `src/utils/taskGenerator.js` | премахнати неизползвани import-и `isPastDate`, `hasTaskProgress` |
+| `src/components/habits/HabitModal.jsx` | `useState(habit?.color ?? COLORS[Math.floor(Math.random()*...)])` → `useState(() => ...)` (lazy initializer) — `Math.random()` вече не се вика при всеки render; същевременно премахна и неизползвания `setColor` (няма UI за смяна на цвета — случайният цвят се задава еднократно при създаване, нарочно) |
+| `public/sw.js` | `install` listener-ът вече не приема неизползвания параметър `e` |
+| `eslint.config.js` | нов override за `public/sw.js` с `globals.serviceworker` — `clients`/`self` вече се разпознават като истински Service Worker глобали, вместо да гърмят като `no-undef` |
+| `src/App.jsx` (2) | `NAV_ITEMS.map(({ id, label, Icon }) => ...)` → без `Icon` (не се рендваше никъде); премахнати `Icon: ...` от всеки елемент на `NAV_ITEMS` и вече неизползваният `lucide-react` import `{ Calendar, BarChart3, Folder, Archive }` — виж бележка по-долу |
+
+**Находка при чистенето — не е бъг:** `Icon` в `NAV_ITEMS`/`handleDragOver` изглеждаше
+като пропусната икона в долното меню (виж скрийншот при проверка), но `git log -p`
+показва, че `<Icon className="w-5 h-5" />` е бил **нарочно** премахнат от бутона в
+commit `6acfae4` („надписи", 2026-07-03) — менюто е текст-само по дизайн от месеци.
+Останало е само мъртвото `Icon` destructuring/import, сега изчистено.
+
+**Съзнателно НЕ пипнато** (по-висок риск от истинска регресия — виж раздел 6):
+`App.jsx` ефектът за авто-генериране на задачи (`setState` в `useEffect`) и всички
+`exhaustive-deps` предупреждения — dependency масивите им са **нарочно** орязани
+(напр. `[dataLoaded, activeProfileId]` вместо `data.tasks`/`data.habits`), защото
+самите ефекти пишат в `data` — добавянето на „липсващите“ dependencies по буквалната
+препоръка на ESLint би довело до безкраен цикъл генериране→запис→нов тригер. Също
+непипнато: `DateInput.jsx` (`setState` в ефект — компонентът нарочно поддържа два
+едновременни инстанса на един екран, вижте раздел 2).
+
+**Проверка:** `npm run build` минава. `npm run lint` — 22 → 2 грешки (0 нови), 7
+предупреждения непроменени (нарочно). Ръчно в браузър: нова задача пак получава
+случаен цвят коректно (lazy initializer работи идентично на преди); долното меню
+изглежда идентично (текст без икони, както от 2026-07-03).
+
+### 2026-09-11 — Екран „Днес": деня от седмицата под датата
+
+**Какво:** под голямата дата в заглавието на екран „Днес" вече се вижда деликатно
+(малък сив текст) пълното име на деня от седмицата — напр. „11 септември 2026" /
+„петък".
+
+| Файл | Промяна |
+|------|---------|
+| `src/utils/dateUtils.js` | нов `WEEKDAY_NAMES_BG_FULL` (пълни имена, индексирани по `Date.getDay()`: 0=неделя…6=събота) и helper `getWeekdayNameBG(date)` |
+| `src/components/today/TodayScreen.jsx` | под `<h2>` с датата е добавен `<span className="text-xs text-gray-500">{getWeekdayNameBG(selectedDate)}</span>`, обновява се автоматично при смяна на деня |
+| `src/components/ui/HelpModal.jsx` | точка „Навигация" в раздел „Днес" — добавено изречение, че под датата се вижда деня от седмицата |
+
+**Проверка:** `npm run build` минава. `npm run lint` — без нови грешки (само отпреди
+съществуващите в други файлове). Ръчно в браузър: 11.09.2026 → „петък“, 12.09.2026 →
+„събота“ (обновява се коректно при навигация със стрелките).
+
 ### 2026-09-07 — Еднократните задачи с цветовете на обикновените
 
 **Какво:** редът на еднократна задача в „Днес“ вече не е с жълт фон. Използва **същата**

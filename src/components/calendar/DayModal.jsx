@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatDate, formatDisplayDate, toMidnight, isPastDate, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG } from '../../utils/dateUtils';
 import { doesDateMatchRule } from '../../utils/ruleEngine';
-import { createTaskObject, resetTaskProgress, generateId } from '../../utils/habitUtils';
+import { createTaskObject, resetTaskProgress } from '../../utils/habitUtils';
 import { checkMissedTasks } from '../../utils/taskGenerator';
 import TaskActions from '../today/TaskActions';
 import MakeupPicker from './MakeupPicker';

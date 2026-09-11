@@ -1,10 +1,9 @@
 // CalendarScreen.jsx
 import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { formatDate, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight } from '../../utils/dateUtils';
+import { formatDate, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG } from '../../utils/dateUtils';
 import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerator';
 import { getCalendarDayStateWithRing as getCalendarDayState } from '../../utils/calendarStates';
-import { doesDateMatchRule } from '../../utils/ruleEngine';
 import DayModal from './DayModal';
 import SearchableSelect from '../ui/SearchableSelect';
 

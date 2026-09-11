@@ -4,8 +4,8 @@
 // ============================================================
 
 import { doesDateMatchRule } from './ruleEngine';
-import { formatDate, toMidnight, isPastDate } from './dateUtils';
-import { createTaskObject, isTaskCompleted, hasTaskProgress, isEntirelyInactive } from './habitUtils';
+import { formatDate, toMidnight } from './dateUtils';
+import { createTaskObject, isTaskCompleted, isEntirelyInactive } from './habitUtils';
 
 // -------------------------------------------------------
 // Генерира задачи за един месец за дадена задача

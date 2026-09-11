@@ -1,5 +1,4 @@
   import { useState, useEffect, useRef } from 'react';
-  import { Calendar, BarChart3, Folder, Archive } from 'lucide-react';
   import {
     loadAppData, saveAppData, clearAppData,
     loadProfilesMeta, setActiveProfile, createProfile, renameProfile,
@@ -8,7 +7,7 @@
   import { isMultiProfileExport } from './utils/exportImport';
   import { checkMissedTasks, generateTasksForMonth, applyRuleChange } from './utils/taskGenerator';
   import { generateId, hasTaskProgress, syncTaskInactivity } from './utils/habitUtils';
-  import { formatDate, toMidnight } from './utils/dateUtils';
+  import { formatDate } from './utils/dateUtils';
   import { useNotifications } from './hooks/useNotifications';
 
   // Екрани — ще се попълват в следващите етапи
@@ -16,7 +15,6 @@
   import TodayScreen      from './components/today/TodayScreen';
   import CalendarScreen   from './components/calendar/CalendarScreen';
   import StatisticsScreen from './components/statistics/StatisticsScreen';
-  import ArchiveScreen    from './components/habits/ArchiveScreen';
   import MissedScreen     from './components/habits/MissedScreen';
   import SettingsModal    from './components/settings/SettingsModal';
   import ProfileSwitcher  from './components/profiles/ProfileSwitcher';
@@ -56,11 +54,11 @@
   // Навигационни табове
   // ─────────────────────────────────────────────────────────
   const NAV_ITEMS = [
-    { id: 'today',      label: 'Днес',       Icon: Calendar  },
-    { id: 'habits',     label: 'Задачи',     Icon: Folder    },
-    { id: 'calendar',   label: 'Календар',   Icon: Calendar  },
-    { id: 'statistics', label: 'Статистика', Icon: BarChart3 },
-    { id: 'missed',     label: 'Пропуснати\u00A0и Отработени', Icon: Archive   },
+    { id: 'today',      label: 'Днес' },
+    { id: 'habits',     label: 'Задачи' },
+    { id: 'calendar',   label: 'Календар' },
+    { id: 'statistics', label: 'Статистика' },
+    { id: 'missed',     label: 'Пропуснати\u00A0и Отработени' },
   ];
 
   // ─────────────────────────────────────────────────────────
@@ -220,13 +218,6 @@
 
     const handleTodoDelete = (todoId) => {
       setData(prev => ({ ...prev, todos: prev.todos.filter(t => t.id !== todoId) }));
-    };
-
-    const handleTaskNoteUpdate = (taskId, note) => {
-      setData(prev => ({
-        ...prev,
-        tasks: prev.tasks.map(t => t.id === taskId ? { ...t, note } : t),
-      }));
     };
 
     // Запазва задача + правило (нов или редактиран)
@@ -569,8 +560,6 @@
                 rules={data.rules}
                 todos={data.todos}
                 onTasksUpdate={handleTasksUpdate}
-                onTaskNoteUpdate={handleTaskNoteUpdate}
-                onHabitsReorder={handleHabitsReorder}
                 onTodoSave={handleTodoSave}
                 onTodoDelete={handleTodoDelete}
                 onHabitInactivityChange={handleHabitInactivityChange}
@@ -628,7 +617,7 @@
         <nav className="fixed bottom-0 left-0 right-0 bg-white shadow-2xl rounded-t-3xl z-40">
           <div className="max-w-md mx-auto px-2 py-3">
             <div className="flex justify-around items-center">
-              {NAV_ITEMS.map(({ id, label, Icon }) => {
+              {NAV_ITEMS.map(({ id, label }) => {
                 const isActive = activeTab === id;
                 return (
                   <button

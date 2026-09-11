@@ -1,7 +1,7 @@
 // MakeupPicker.jsx
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { formatDate, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight, isPastDate } from '../../utils/dateUtils';
+import { formatDate, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight } from '../../utils/dateUtils';
 import { doesDateMatchRule } from '../../utils/ruleEngine';
 
 export default function MakeupPicker({ currentDate, habit, allTasks, rule, onSelect, onClose }) {

@@ -4,7 +4,6 @@ import SearchableSelect from '../ui/SearchableSelect';
 import { doesDateMatchRule } from '../../utils/ruleEngine';
 import { isTaskCompleted, isEntirelyInactive } from '../../utils/habitUtils';
 import { toMidnight, formatDate } from '../../utils/dateUtils';
-import { getNextRuleDate } from '../../utils/ruleEngine';
 
 const PERIODS = [
   { id: 'week',   label: 'Тази седмица' },
@@ -92,8 +91,6 @@ export default function StatisticsScreen({ habits, tasks, rules }) {
         cur.setDate(cur.getDate() + 1);
       }
     }
-
-    const ruleDaysSet = new Set(ruleDaysInPeriod);
 
     // Задачи в периода
     const tasksInPeriod = habitTasks.filter(t => {

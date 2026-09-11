@@ -9,7 +9,7 @@ import TodoRow from './TodoRow';
 import TodoModal from './TodoModal';
 import Toast from '../ui/Toast';
 
-export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksUpdate, onTaskNoteUpdate, onHabitsReorder, onTodoSave, onTodoDelete, onHabitInactivityChange, dayOrders, onDayOrdersChange }) {
+export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksUpdate, onTodoSave, onTodoDelete, onHabitInactivityChange, dayOrders, onDayOrdersChange }) {
   const [selectedDate,   setSelectedDate]   = useState(new Date());
   const [showDayModal,   setShowDayModal]   = useState(false);
   const [selectedEntry,  setSelectedEntry]  = useState(null);

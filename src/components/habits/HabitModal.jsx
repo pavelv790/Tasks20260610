@@ -55,7 +55,7 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
   const [timesPerDay,   setTimesPerDay]   = useState(habit?.timesPerDay   ?? 1);
   const [subtaskNames,  setSubtaskNames]  = useState(habit?.subtaskNames  ?? []);
   const [reminderTime,  setReminderTime]  = useState(habit?.reminderTime  ?? null);
-  const [color,         setColor]         = useState(habit?.color ?? COLORS[Math.floor(Math.random() * COLORS.length)]);
+  const [color] = useState(() => habit?.color ?? COLORS[Math.floor(Math.random() * COLORS.length)]);
   const [description,   setDescription]   = useState(habit?.description   ?? '');
 
   // ── Неактивност ──────────────────────────────────────
