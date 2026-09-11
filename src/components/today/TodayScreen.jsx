@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Search, Plus } from 'lucide-react';
-import { formatDate, formatDisplayDateWithToday, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight } from '../../utils/dateUtils';
+import { formatDate, formatDisplayDateWithToday, getWeekdayNameBG, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight } from '../../utils/dateUtils';
 import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerator';
 import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive } from '../../utils/habitUtils';
 import { getCalendarDayState } from '../../utils/calendarStates';
@@ -286,9 +286,14 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
             className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <Calendar className="w-5 h-5 text-indigo-500" />
-            <h2 className="text-lg font-bold text-gray-800">
-              {formatDisplayDateWithToday(selectedDate)}
-            </h2>
+            <span className="flex flex-col items-center">
+              <h2 className="text-lg font-bold text-gray-800">
+                {formatDisplayDateWithToday(selectedDate)}
+              </h2>
+              <span className="text-xs text-gray-500">
+                {getWeekdayNameBG(selectedDate)}
+              </span>
+            </span>
           </button>
 
           <button onClick={goToNext} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">

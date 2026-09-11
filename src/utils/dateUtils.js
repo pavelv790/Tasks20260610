@@ -15,6 +15,13 @@ export const MONTH_NAMES_BG_CAP = [
 
 export const WEEKDAY_NAMES_BG = ['Пон', 'Вт', 'Ср', 'Чет', 'Пет', 'Съб', 'Нед'];
 
+export const WEEKDAY_NAMES_BG_FULL = [
+  'неделя', 'понеделник', 'вторник', 'сряда', 'четвъртък', 'петък', 'събота',
+];
+
+// Пълното име на деня от седмицата (напр. "петък") за дадена дата
+export const getWeekdayNameBG = (date) => WEEKDAY_NAMES_BG_FULL[date.getDay()];
+
 // Форматира Date обект като 'YYYY-MM-DD' стринг
 export const formatDate = (date) => {
   const y = date.getFullYear();
