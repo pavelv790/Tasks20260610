@@ -19,7 +19,6 @@
   import SettingsModal    from './components/settings/SettingsModal';
   import ProfileSwitcher  from './components/profiles/ProfileSwitcher';
   import InstallPrompt    from './components/ui/InstallPrompt';
-  import UpdatePrompt     from './components/ui/UpdatePrompt';
   import NotificationPermissionModal from './components/ui/NotificationPermissionModal';
   import AlertModal from './components/ui/AlertModal';
 
@@ -684,7 +683,6 @@
         )}
 
         <InstallPrompt />
-        <UpdatePrompt />
       </div>
     );
   }
