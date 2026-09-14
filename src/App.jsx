@@ -150,14 +150,17 @@
         const rules = data.rules.filter(r => r.habitId === habit.id && r.isActive);
         if (rules.length === 0) return;
 
-        // Генерираме за текущия и следващия месец
+        // Генерираме за текущия и следващия месец. `data.tasks` е достатъчен
+        // (без `newTasks`) — различните задачи имат различен habitId, а
+        // различните месеци никога не се припокриват по дата, така че няма
+        // как вече генерирано в тази обиколка да е релевантно за проверката.
         [-1, 0, 1].forEach(offset => {
           const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
           const generated = generateTasksForMonth(
-            habit, rules, [...data.tasks, ...newTasks],
+            habit, rules, data.tasks,
             d.getFullYear(), d.getMonth(), false
           );
-          newTasks = [...newTasks, ...generated];
+          newTasks.push(...generated);
         });
       });
 

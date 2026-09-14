@@ -70,8 +70,11 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
 
     habits.forEach(habit => {
       const habitRules = rules.filter(r => r.habitId === habit.id && r.isActive);
-      const generated  = generateTasksForMonth(habit, habitRules, [...tasks, ...newTasks], year, month, false);
-      newTasks = [...newTasks, ...generated];
+      // `tasks` е достатъчен (без `newTasks`) — различните задачи имат
+      // различен habitId, така че вече генерирано в тази обиколка не може
+      // да е релевантно за проверката за друг habit.
+      const generated  = generateTasksForMonth(habit, habitRules, tasks, year, month, false);
+      newTasks.push(...generated);
     });
 
     if (newTasks.length > 0) {

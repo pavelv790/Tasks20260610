@@ -19,6 +19,14 @@ export const generateTasksForMonth = (habit, rules, existingTasks, year, month, 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const newTasks = [];
 
+  // Индекс на вече съществуващите дати за тази задача — O(1) проверка вместо
+  // .some() през целия масив за всеки ден (беше видим пад в скоростта на
+  // зареждане при много задачи, виж TECHNICAL.md)
+  const existingDates = new Set();
+  for (const t of existingTasks) {
+    if (t.habitId === habit.id) existingDates.add(t.date);
+  }
+
   for (let day = 1; day <= daysInMonth; day++) {
     const date = toMidnight(new Date(year, month, day));
 
@@ -26,13 +34,12 @@ export const generateTasksForMonth = (habit, rules, existingTasks, year, month, 
 
     const dateStr = formatDate(date);
 
-    // Пропускаме ако вече има задача за тази дата
-    const exists = existingTasks.some(t => t.habitId === habit.id && t.date === dateStr);
-    if (exists) continue;
+    if (existingDates.has(dateStr)) continue;
 
     const matchingRule = activeRules.find(r => doesDateMatchRule(date, r));
     if (matchingRule) {
       newTasks.push(createTaskObject(habit, dateStr, matchingRule.id));
+      existingDates.add(dateStr);
     }
   }
 
