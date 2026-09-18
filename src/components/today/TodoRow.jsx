@@ -138,8 +138,13 @@ export default function TodoRow({
   const closeAction = () => { commitModalNote(); setActionOpen(false); };
 
   const handleActionUpdate = (updated) => {
+    // `manuallyReset` идва от бутона „Нулирай задачата" (TaskActions.reset) — за
+    // еднократни задачи няма ефект (няма checkMissedTasks/„пропусната" за тях),
+    // затова не го пазим върху todo обекта.
+    const cleaned = { ...updated };
+    delete cleaned.manuallyReset;
     const noteChanged = modalNote !== (actionTodo.note ?? '');
-    const merged = noteChanged ? { ...updated, note: modalNote } : updated;
+    const merged = noteChanged ? { ...cleaned, note: modalNote } : cleaned;
     const wasCompleted = isTaskCompleted(actionTodo);
     onSave(merged);
     if (!wasCompleted && isTaskCompleted(merged)) {

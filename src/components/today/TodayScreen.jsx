@@ -4,6 +4,7 @@ import { formatDate, formatDisplayDateWithToday, getWeekdayNameBG, MONTH_NAMES_B
 import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerator';
 import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive } from '../../utils/habitUtils';
 import { getCalendarDayState } from '../../utils/calendarStates';
+import { useConfetti } from '../../hooks/useConfetti';
 import TaskActions from './TaskActions';
 import TodoRow from './TodoRow';
 import TodoModal from './TodoModal';
@@ -25,6 +26,8 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
   const [undoTodo,       setUndoTodo]       = useState(null);
   const [showCreateTodo, setShowCreateTodo] = useState(false);
   const followingTodayRef = useRef(true);
+  const celebratedDateRef = useRef(null);
+  const { fireGoldenConfetti } = useConfetti();
 
   useEffect(() => {
     if (expandedNote === null) return;
@@ -115,11 +118,10 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
     if (isTodaySelected && d < todayStr && t.status !== 'completed') return true;
     return false;
   };
-  const ordTodo = (t) => t.order ?? t.createdAt ?? 0;
   const dayTodos = todos
     .filter(t => t.status !== 'completed' || t.id === completingTodoId)
     .filter(todoBelongsHere)
-    .sort((a, b) => ordTodo(a) - ordTodo(b));
+    .sort((a, b) => a.name.localeCompare(b.name, 'bg'));
 
   // ── Общ ред: еднократни (най-отгоре по подразбиране) + навици (по подредба),
   // после евент. ръчна подредба за деня ──
@@ -167,6 +169,21 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
   const filteredItems = isSearching
     ? items.filter(it => (it.kind === 'habit' ? it.habit.name : it.todo.name).toLowerCase().includes(q))
     : items;
+
+  // ── „Браво! Всичко е завършено!" — златно конфети веднъж на преминаване в това
+  // състояние за деня (не на всеки render, докато остава завършен) ──
+  const noTasksAtAll   = tasksForDate.length === 0;
+  const hasMissedTasks = tasksForDate.some(t => getEffectiveStatus(t) === 'missed');
+  const allDoneToday   = items.length === 0 && !noTasksAtAll && !hasMissedTasks;
+
+  useEffect(() => {
+    if (allDoneToday && celebratedDateRef.current !== dateStr) {
+      celebratedDateRef.current = dateStr;
+      fireGoldenConfetti();
+    } else if (!allDoneToday && celebratedDateRef.current === dateStr) {
+      celebratedDateRef.current = null;
+    }
+  }, [allDoneToday, dateStr, fireGoldenConfetti]);
 
   // Живи обекти за отворения прозорец (за да реагира веднага на промени в неактивността)
   const modalHabit = selectedEntry ? (habits.find(h => h.id === selectedEntry.habit.id) ?? selectedEntry.habit) : null;
@@ -384,9 +401,9 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
       <div className="space-y-2">
         {items.length === 0 ? (
           <div className="bg-gradient-to-br from-blue-100 to-cyan-100 rounded-2xl shadow-lg p-8 text-center">
-            {tasksForDate.length === 0 ? (
+            {noTasksAtAll ? (
               <><div className="text-6xl mb-4">🔭</div><p className="text-xl font-semibold text-gray-600">Няма задачи за този ден</p></>
-            ) : tasksForDate.some(t => getEffectiveStatus(t) === 'missed') ? (
+            ) : hasMissedTasks ? (
               <><div className="text-6xl mb-4">🔭</div><p className="text-xl font-semibold text-gray-600">Няма активни задачи</p></>
             ) : (
               <><div className="text-6xl mb-4">🎉</div><p className="text-xl font-semibold text-green-600">Браво! Всичко е завършено!</p><p className="text-gray-500 mt-2">Днес си го направил страхотно! 💪</p></>
