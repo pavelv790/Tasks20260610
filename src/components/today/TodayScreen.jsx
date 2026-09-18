@@ -121,17 +121,22 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
     .filter(todoBelongsHere)
     .sort((a, b) => ordTodo(a) - ordTodo(b));
 
-  // ── Общ ред: навици (по подредба) + еднократни, после евент. ръчна подредба за деня ──
+  // ── Общ ред: еднократни (най-отгоре по подразбиране) + навици (по подредба),
+  // после евент. ръчна подредба за деня ──
   const naturalRefs = [
-    ...sortedHabits.map(h => ({ kind: 'habit', id: h.id })),
     ...dayTodos.map(t => ({ kind: 'todo', id: t.id })),
+    ...sortedHabits.map(h => ({ kind: 'habit', id: h.id })),
   ];
   const dayOrderList = dayOrders[dateStr];
+  // Елемент, който още не е в запазената ръчна подредба (напр. новосъздадена
+  // еднократна задача), пада към естествения си край: еднократните — най-отгоре
+  // (-1), навиците — най-отдолу (999), както досега.
+  const fallbackIdx = (ref) => (ref.kind === 'todo' ? -1 : 999);
   const orderedRefs = dayOrderList
     ? [...naturalRefs].sort((a, b) => {
         const ia = dayOrderList.indexOf(a.id);
         const ib = dayOrderList.indexOf(b.id);
-        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+        return (ia === -1 ? fallbackIdx(a) : ia) - (ib === -1 ? fallbackIdx(b) : ib);
       })
     : naturalRefs;
 
