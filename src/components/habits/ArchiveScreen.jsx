@@ -3,6 +3,7 @@ import { ArchiveRestore, Trash2 } from 'lucide-react';
 import DeleteModal  from '../ui/DeleteModal';
 import ConfirmModal from '../ui/ConfirmModal';
 import { MONTH_NAMES_BG } from '../../utils/dateUtils';
+import { playSound } from '../../utils/sounds';
 
 const formatArchiveDate = (ts) => {
   const d = new Date(ts);
@@ -96,7 +97,7 @@ export default function ArchiveScreen({ archivedHabits, onUnarchive, onDelete })
         <DeleteModal
           title="Изтриване от архив"
           message={`Сигурни ли сте? "${deleteTarget.habit.name}" и всичките й записи ще бъдат изтрити завинаги.`}
-          onConfirm={() => { onDelete(deleteTarget.archivedAt); setDeleteTarget(null); }}
+          onConfirm={() => { playSound('delete'); onDelete(deleteTarget.archivedAt); setDeleteTarget(null); }}
           onClose={() => setDeleteTarget(null)}
         />
       )}

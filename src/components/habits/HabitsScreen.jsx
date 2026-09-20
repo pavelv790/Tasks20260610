@@ -5,6 +5,7 @@ import HabitModal   from './HabitModal';
 import DeleteModal  from '../ui/DeleteModal';
 import AlertModal   from '../ui/AlertModal';
 import ConfirmModal from '../ui/ConfirmModal';
+import { playSound }  from '../../utils/sounds';
 
 export default function HabitsScreen({ habits, rules, onSave, onDelete, onArchive, onReorder }) {
   const [showModal,     setShowModal]     = useState(false);
@@ -76,7 +77,7 @@ export default function HabitsScreen({ habits, rules, onSave, onDelete, onArchiv
   };
 
   const handleDeleteRequest = (habit) => {
-    if (habits.length === 1) { setShowAlert(true); return; }
+    if (habits.length === 1) { playSound('error'); setShowAlert(true); return; }
     setDeleteTarget(habit);
   };
 
@@ -149,7 +150,7 @@ export default function HabitsScreen({ habits, rules, onSave, onDelete, onArchiv
         <DeleteModal
           title="Изтриване на задача"
           message={`Сигурни ли сте? Всички записи за "${deleteTarget.name}" ще бъдат изтрити завинаги.`}
-          onConfirm={() => { onDelete(deleteTarget.id); setDeleteTarget(null); }}
+          onConfirm={() => { playSound('delete'); onDelete(deleteTarget.id); setDeleteTarget(null); }}
           onClose={() => setDeleteTarget(null)}
         />
       )}

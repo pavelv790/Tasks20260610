@@ -405,3 +405,55 @@ export const loadBackup = async (key) => {
     return null;
   }
 };
+
+// ── Потребителски звуци (глобални — не са част от профилите) ──
+// Ключ `customSound_<събитие>` → { blob, name, size, duration }.
+// Не се обхождат от resetAllProfiles / importAllProfiles / backup-ите (те филтрират по
+// конкретни префикси), не влизат в export и не се пипат при смяна на профил.
+
+const CUSTOM_SOUND_PREFIX = 'customSound_';
+
+// Записва файла и го чете обратно — ако устройството не може да пази Blob (стари iOS) или
+// няма място, връща false, вместо да остави „повреден“ запис.
+export const saveCustomSound = async (event, blob, info) => {
+  try {
+    const db  = await getDB();
+    const key = `${CUSTOM_SOUND_PREFIX}${event}`;
+    await idbPut(db, key, { blob, name: info.name, size: blob.size, duration: info.duration ?? null });
+    const back = await idbGet(db, key);
+    if (!back?.blob || back.blob.size !== blob.size) {
+      await idbDel(db, key);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// { [event]: { blob, name, size, duration } }
+export const loadCustomSounds = async () => {
+  try {
+    const db   = await getDB();
+    const keys = await idbAllKeys(db);
+    const out  = {};
+    for (const k of keys) {
+      if (typeof k !== 'string' || !k.startsWith(CUSTOM_SOUND_PREFIX)) continue;
+      const rec = await idbGet(db, k);
+      if (rec?.blob) out[k.slice(CUSTOM_SOUND_PREFIX.length)] = rec;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
+
+export const deleteCustomSound = async (event) => {
+  try {
+    const db = await getDB();
+    await idbDel(db, `${CUSTOM_SOUND_PREFIX}${event}`);
+    return true;
+  } catch {
+    return false;
+  }
+};

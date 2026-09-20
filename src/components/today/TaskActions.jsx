@@ -1,6 +1,7 @@
 import { useConfetti } from '../../hooks/useConfetti';
 import { ORDINAL_SUFFIX } from '../../utils/constants';
 import { isTaskCompleted } from '../../utils/habitUtils';
+import { playSound } from '../../utils/sounds';
 
 // ─────────────────────────────────────────────────────────
 // TaskActions — логика за завършване на задача
@@ -20,10 +21,19 @@ export default function TaskActions({ task, onUpdate, isMakeup = false, hideSkip
 
   const wasCompleted = () => task.status === 'completed';
 
+  const doneCount = (items) => (items ?? []).filter(x => !x.inactive && x.completed).length;
+
   const finish = (updatedTask) => {
     const justCompleted = !wasCompleted() && updatedTask.status === 'completed';
+    const checkedMore = doneCount(updatedTask.completions) > doneCount(task.completions)
+      || doneCount(updatedTask.subtasks) > doneCount(task.subtasks);
     onUpdate(updatedTask);
-    if (justCompleted) setTimeout(() => fireConfetti(), 100);
+    if (justCompleted) {
+      playSound('complete');
+      setTimeout(() => fireConfetti(), 100);
+    } else if (checkedMore) {
+      playSound('check');
+    }
   };
 
   const isActiveC = (c) => !c.inactive;
@@ -127,6 +137,7 @@ export default function TaskActions({ task, onUpdate, isMakeup = false, hideSkip
   };
 
   const markMissed = () => {
+    playSound('skip');
     onUpdate({
       ...task,
       status: 'missed',

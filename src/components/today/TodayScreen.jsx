@@ -5,6 +5,7 @@ import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerat
 import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive } from '../../utils/habitUtils';
 import { getCalendarDayState } from '../../utils/calendarStates';
 import { useConfetti } from '../../hooks/useConfetti';
+import { playSound } from '../../utils/sounds';
 import TaskActions from './TaskActions';
 import TodoRow from './TodoRow';
 import TodoModal from './TodoModal';
@@ -180,6 +181,7 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
     if (allDoneToday && celebratedDateRef.current !== dateStr) {
       celebratedDateRef.current = dateStr;
       fireGoldenConfetti();
+      playSound('allDone');
     } else if (!allDoneToday && celebratedDateRef.current === dateStr) {
       celebratedDateRef.current = null;
     }

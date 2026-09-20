@@ -3,6 +3,7 @@ import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactiv
 import { getCalendarDayState } from '../../utils/calendarStates';
 import TaskActions from './TaskActions';
 import TodoModal from './TodoModal';
+import { playSound } from '../../utils/sounds';
 
 // ─────────────────────────────────────────────────────────
 // TodoRow — един ред за еднократна задача в общия списък на „Днес".
@@ -273,7 +274,7 @@ export default function TodoRow({
                 onUpdate={handleActionUpdate}
                 hideSkip
                 onToggleInactive={handleToggleInactive}
-                onDelete={() => { onDelete(actionTodo.id); setActionOpen(false); }}
+                onDelete={() => { playSound('delete'); onDelete(actionTodo.id); setActionOpen(false); }}
               />
 
               <div className="mt-4 pt-4 border-t border-gray-200">

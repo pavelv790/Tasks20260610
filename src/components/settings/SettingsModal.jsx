@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react';
-import { X, Download, Upload, Database, Trash2, Info, Users } from 'lucide-react';
+import { X, Download, Upload, Database, Trash2, Info, Users, Volume2, VolumeX } from 'lucide-react';
 import { exportToJson, importFromJson, validateAppData } from '../../utils/exportImport';
 import { saveBackup, listBackups, loadBackup } from '../../utils/storage';
 import ConfirmModal from '../ui/ConfirmModal';
 import ArchiveScreen from '../habits/ArchiveScreen';
 import HelpModal from '../ui/HelpModal';
+import {
+  isSoundEnabled, setSoundEnabled, getSoundVolume, setSoundVolume, playSound,
+  SOUND_LABELS, MAX_FILE_VOLUME, ensureCustomSounds, getCustomSoundsInfo, setCustomSound, setCustomSoundVolume, removeCustomSound,
+} from '../../utils/sounds';
+
+const formatSize = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+const formatDuration = (sec) => (sec == null ? '' : `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`);
 
 const safeFileName = (s) => (s || 'профил').replace(/[\\/:*?"<>|]+/g, '_').trim() || 'профил';
 
@@ -26,12 +33,63 @@ export default function SettingsModal({
   const [importError,  setImportError]  = useState(null);
   const [backups, setBackups] = useState([]);
   const [showHelp, setShowHelp] = useState(false);
+  const [soundOn,  setSoundOn]  = useState(isSoundEnabled);
+  const [volume,   setVolume]   = useState(() => Math.round(getSoundVolume() * 100));
+  const [customInfo, setCustomInfo] = useState(getCustomSoundsInfo);
+  const [soundError, setSoundError] = useState(null);
+  const [busyEvent,  setBusyEvent]  = useState(null);
 
   const multiProfile = profiles.length > 1;
 
 useEffect(() => {
   listBackups(activeProfileId).then(setBackups);
 }, [activeProfileId]);
+
+useEffect(() => {
+  ensureCustomSounds().then(() => setCustomInfo(getCustomSoundsInfo()));
+}, []);
+
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundEnabled(next);
+    setSoundOn(next);
+    if (next) playSound('check');   // кратка проба при включване
+  };
+
+  const handleVolumeChange = (e) => {
+    const v = Number(e.target.value);
+    setVolume(v);
+    setSoundVolume(v / 100);
+  };
+  const previewVolume = () => playSound('check');   // при пускане на плъзгача — чува се новата сила
+
+  const handleFileVolumeChange = (event, e) => {
+    setCustomSoundVolume(event, Number(e.target.value) / 100);
+    setCustomInfo(getCustomSoundsInfo());
+  };
+
+  const handleSoundUpload = async (event, e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusyEvent(event);
+    setSoundError(null);
+    const res = await setCustomSound(event, file);
+    setBusyEvent(null);
+    if (!res.ok) {
+      playSound('error');
+      setSoundError(`${SOUND_LABELS[event]}: ${res.error}`);
+      return;
+    }
+    setCustomInfo(getCustomSoundsInfo());
+    playSound(event);   // веднага се чува какво е качено
+  };
+
+  const handleSoundRemove = async (event) => {
+    setSoundError(null);
+    await removeCustomSound(event);
+    setCustomInfo(getCustomSoundsInfo());
+  };
 
   const handleExport = (scope = 'profile') => {
     try {
@@ -58,6 +116,7 @@ useEffect(() => {
       const imported = await importFromJson(file);
       const validationError = validateAppData(imported);
       if (validationError) {
+        playSound('error');
         setImportError(validationError);
         return;
       }
@@ -77,6 +136,7 @@ useEffect(() => {
       });
     } catch (err) {
       console.error(err);
+      playSound('error');
       setImportError('Файлът не е валиден JSON.');
     } finally {
       setImporting(false);
@@ -179,6 +239,101 @@ useEffect(() => {
             )}
 
             <div className="space-y-4">
+
+              {/* Звук */}
+              <div className="bg-gradient-to-r from-amber-50 to-yellow-100 rounded-xl p-4 border-2 border-amber-200">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-gray-800 mb-1 flex items-center gap-2">
+                      {soundOn ? <Volume2 className="w-5 h-5 text-amber-600" /> : <VolumeX className="w-5 h-5 text-gray-500" />}
+                      Звукови ефекти
+                    </h3>
+                    <p className="text-sm text-gray-600">Кратки звуци при отмятане, завършване и изтриване. Важи за цялото приложение.</p>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={soundOn}
+                    aria-label="Звукови ефекти"
+                    onClick={toggleSound}
+                    className={`relative shrink-0 w-14 h-8 rounded-full transition-colors ${soundOn ? 'bg-green-500' : 'bg-gray-300'}`}
+                  >
+                    <span className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${soundOn ? 'translate-x-6' : ''}`} />
+                  </button>
+                </div>
+
+                {soundOn && (
+                  <div className="mt-4 flex items-center gap-2">
+                    <span className="text-xs text-gray-600 shrink-0">Обща сила</span>
+                    <VolumeX className="w-4 h-4 text-gray-500 shrink-0" />
+                    <input
+                      type="range" min="0" max="100" step="5"
+                      value={volume}
+                      onChange={handleVolumeChange}
+                      onPointerUp={previewVolume}
+                      onKeyUp={previewVolume}
+                      aria-label="Сила на звука"
+                      className="flex-1 accent-amber-500"
+                    />
+                    <Volume2 className="w-4 h-4 text-gray-500 shrink-0" />
+                    <span className="w-10 text-right text-xs font-semibold text-gray-700">{volume}%</span>
+                  </div>
+                )}
+
+                {soundOn && (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-xs text-gray-500">
+                      За всяко събитие можеш да качиш свой аудио файл (MP3, WAV, M4A…). Файлът остава само на това
+                      устройство и не влиза в backup-ите. Дълъг файл ще бъде прекъснат от следващия звук.
+                    </p>
+                    {soundError && (
+                      <div className="p-2 bg-red-100 border border-red-300 rounded-lg text-xs text-red-800 font-semibold">⚠️ {soundError}</div>
+                    )}
+                    {Object.keys(SOUND_LABELS).map(ev => {
+                      const info = customInfo[ev];
+                      return (
+                        <div key={ev} className="bg-white bg-opacity-80 rounded-lg p-2">
+                          <div className="text-sm font-semibold text-gray-800">{SOUND_LABELS[ev]}</div>
+                          <div className="text-xs text-gray-500 break-all">
+                            {info
+                              ? `📁 ${info.name} · ${formatSize(info.size)}${info.duration != null ? ` · ${formatDuration(info.duration)}` : ''}`
+                              : 'Стандартен звук'}
+                          </div>
+                          {info && (
+                            <div className="flex items-center gap-2 mt-2">
+                              <span className="text-xs text-gray-600 shrink-0">Сила на файла</span>
+                              <input
+                                type="range" min="0" max={MAX_FILE_VOLUME * 100} step="5"
+                                value={Math.round(info.volume * 100)}
+                                onChange={(e) => handleFileVolumeChange(ev, e)}
+                                onPointerUp={() => playSound(ev)}
+                                onKeyUp={() => playSound(ev)}
+                                aria-label={`Сила на файла — ${SOUND_LABELS[ev]}`}
+                                className="flex-1 min-w-0 accent-blue-500"
+                              />
+                              <span className="w-10 text-right text-xs font-semibold text-gray-700">{Math.round(info.volume * 100)}%</span>
+                            </div>
+                          )}
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            <button onClick={() => playSound(ev)} className="px-3 py-1 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600">
+                              ▶ Изпробвай
+                            </button>
+                            <label className={`px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 cursor-pointer ${busyEvent === ev ? 'opacity-50 pointer-events-none' : ''}`}>
+                              {busyEvent === ev ? 'Проверява се…' : '📁 Качи файл'}
+                              <input type="file" accept="audio/*" className="hidden" disabled={busyEvent !== null}
+                                onChange={(e) => handleSoundUpload(ev, e)} />
+                            </label>
+                            {info && (
+                              <button onClick={() => handleSoundRemove(ev)} className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300">
+                                ✕ Върни стандартния
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
               {/* Експорт */}
               <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-xl p-4 border-2 border-green-200">
