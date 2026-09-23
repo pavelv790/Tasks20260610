@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Search, Plus } from 'lucide-react';
-import { formatDate, formatDisplayDateWithToday, getWeekdayNameBG, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight } from '../../utils/dateUtils';
+import { formatDate, formatDisplayDateWithToday, getWeekdayNameBG, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight, isPastDate } from '../../utils/dateUtils';
+import { doesDateMatchRule } from '../../utils/ruleEngine';
 import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerator';
-import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive } from '../../utils/habitUtils';
+import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive, createTaskObject, resetTaskProgress } from '../../utils/habitUtils';
 import { getCalendarDayState } from '../../utils/calendarStates';
 import { useConfetti } from '../../hooks/useConfetti';
 import { playSound } from '../../utils/sounds';
@@ -10,6 +11,8 @@ import TaskActions from './TaskActions';
 import TodoRow from './TodoRow';
 import TodoModal from './TodoModal';
 import Toast from '../ui/Toast';
+import MakeupPicker from '../calendar/MakeupPicker';
+import UnlinkedPicker from '../calendar/UnlinkedPicker';
 
 export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksUpdate, onTodoSave, onTodoDelete, onHabitInactivityChange, dayOrders, onDayOrdersChange }) {
   const [selectedDate,   setSelectedDate]   = useState(new Date());
@@ -26,6 +29,8 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
   const [completingTodoId, setCompletingTodoId] = useState(null);
   const [undoTodo,       setUndoTodo]       = useState(null);
   const [showCreateTodo, setShowCreateTodo] = useState(false);
+  const [showMakeupPicker,   setShowMakeupPicker]   = useState(false);
+  const [showUnlinkedPicker, setShowUnlinkedPicker] = useState(false);
   const followingTodayRef = useRef(true);
   const celebratedDateRef = useRef(null);
   const { fireGoldenConfetti } = useConfetti();
@@ -190,6 +195,8 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
   // Живи обекти за отворения прозорец (за да реагира веднага на промени в неактивността)
   const modalHabit = selectedEntry ? (habits.find(h => h.id === selectedEntry.habit.id) ?? selectedEntry.habit) : null;
   const modalTask  = selectedEntry ? (tasks.find(t => t.id === selectedEntry.task.id) ?? selectedEntry.task) : null;
+  const modalRule  = modalHabit ? rules.find(r => r.habitId === modalHabit.id && r.isActive) : null;
+  const modalInRule = modalRule ? doesDateMatchRule(selectedDate, modalRule) : false;
 
   const handleToggleInactive = ({ scope, index }) => {
     if (!modalHabit || !onHabitInactivityChange) return;
@@ -220,7 +227,104 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
       ? { ...updatedTask, note: modalNote }
       : updatedTask;
     onTasksUpdate([withNote]);
-    setTimeout(() => setShowDayModal(false), 300);
+    setTimeout(() => { setShowDayModal(false); setShowMakeupPicker(false); setShowUnlinkedPicker(false); }, 300);
+  };
+
+  // Наваксване (както в календара — DayModal.handleMakeupSelect), но върху общия `tasks`
+  const handleMakeupSelect = (targetDate) => {
+    if (!modalHabit || !modalTask) return;
+    const targetStr = formatDate(targetDate);
+    let targetTask = tasks.find(t => t.date === targetStr && t.habitId === modalHabit.id);
+
+    const updates = [];
+
+    if (modalTask.makeupFromDate) {
+      const oldSource = tasks.find(t => t.date === modalTask.makeupFromDate && t.habitId === modalHabit.id);
+      if (oldSource) {
+        const oldDate = toMidnight(new Date(oldSource.date));
+        updates.push({ ...oldSource, makeupForDate: null, status: isPastDate(oldDate) ? 'missed' : 'pending' });
+      }
+    }
+
+    if (!targetTask) {
+      targetTask = createTaskObject(modalHabit, targetStr, modalRule?.id);
+    }
+
+    const currentTask = modalNote !== (modalTask.note || '') ? { ...modalTask, note: modalNote } : modalTask;
+    if (modalInRule) {
+      updates.push({ ...currentTask, makeupForDate: targetStr, status: currentTask.status === 'missed' ? 'missed' : currentTask.status });
+      updates.push({ ...targetTask, makeupFromDate: dateStr, status: 'makeup' });
+    } else {
+      updates.push({ ...currentTask, makeupFromDate: targetStr, status: currentTask.status === 'completed' ? 'completed' : 'pending' });
+      updates.push({ ...targetTask, makeupForDate: dateStr });
+    }
+
+    let updated = [...tasks];
+    updates.forEach(u => {
+      const idx = updated.findIndex(t => t.id === u.id);
+      if (idx >= 0) updated[idx] = u;
+      else updated.push(u);
+    });
+
+    onTasksUpdate(checkMissedTasks(updated), true);
+    setShowMakeupPicker(false);
+  };
+
+  // Свързване с отработен ден (както в календара — DayModal UnlinkedPicker.onSelect)
+  const handleUnlinkedSelect = (unlinkedTask) => {
+    if (!modalTask) return;
+    const noteChanged = modalNote !== (modalTask.note || '');
+    const updatedCurrent  = { ...modalTask, makeupForDate: unlinkedTask.date, ...(noteChanged ? { note: modalNote } : {}) };
+    const updatedUnlinked = { ...unlinkedTask, makeupFromDate: dateStr };
+    let updated = tasks.map(t => t.id === updatedCurrent.id ? updatedCurrent : t);
+    updated = updated.map(t => t.id === updatedUnlinked.id ? updatedUnlinked : t);
+    onTasksUpdate(checkMissedTasks(updated), true);
+    setShowUnlinkedPicker(false);
+    setShowDayModal(false);
+  };
+
+  // Нулиране (както в календара — DayModal.handleReset), за заключен/наваксващ ден
+  const handleModalReset = () => {
+    if (!modalTask || !modalHabit) return;
+    const noteChanged = modalNote !== (modalTask.note || '');
+    let updatedTask = { ...resetTaskProgress(modalTask), makeupFromDate: null, makeupForDate: null, ...(noteChanged ? { note: modalNote } : {}) };
+    let extra = [];
+
+    if (modalTask.makeupFromDate) {
+      const source = tasks.find(t => t.date === modalTask.makeupFromDate && t.habitId === modalHabit.id);
+      if (source) {
+        const sourceDate = toMidnight(new Date(source.date));
+        extra.push({ ...source, makeupForDate: null, status: isPastDate(sourceDate) ? 'missed' : 'pending' });
+      }
+      if (!modalInRule) {
+        const updated = tasks.filter(t => t.id !== modalTask.id);
+        const withExtra = updated.map(t => extra.find(e => e.id === t.id) || t);
+        onTasksUpdate(checkMissedTasks(withExtra), true);
+        setShowDayModal(false);
+        return;
+      }
+    }
+
+    if (modalTask.makeupForDate) {
+      const makeupTask = tasks.find(t => t.date === modalTask.makeupForDate && t.habitId === modalHabit.id);
+      if (makeupTask) {
+        const makeupInRule = modalRule ? doesDateMatchRule(new Date(makeupTask.date), modalRule) : false;
+        if (!makeupInRule) {
+          extra.push({ _delete: true, id: makeupTask.id });
+        } else {
+          extra.push({ ...resetTaskProgress(makeupTask), makeupFromDate: null });
+        }
+      }
+    }
+
+    let updated = tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
+    extra.forEach(e => {
+      if (e._delete) { updated = updated.filter(t => t.id !== e.id); return; }
+      const idx = updated.findIndex(t => t.id === e.id);
+      if (idx >= 0) updated[idx] = e;
+    });
+    onTasksUpdate(checkMissedTasks(updated), true);
+    setShowDayModal(false);
   };
 
   const closeModal = () => {
@@ -230,6 +334,8 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
       onTasksUpdate([{ ...currentTask, note: modalNote }]);
     }
     setShowDayModal(false);
+    setShowMakeupPicker(false);
+    setShowUnlinkedPicker(false);
   };
   
   // Пренареждане в общия ред (навици + еднократни); пише пълния ред в dayOrders[dateStr]
@@ -648,22 +754,62 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
                 <div className="bg-orange-100 border-2 border-orange-400 rounded-xl p-4 mb-4">
                   <p className="font-bold text-orange-800">↻ Наваксване</p>
                   <p className="text-sm text-orange-700">За дата: {modalTask.makeupFromDate}</p>
+                  <button
+                    onClick={() => setShowMakeupPicker(true)}
+                    className="w-full mt-2 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold text-sm"
+                  >
+                    ✏️ Промени датата за наваксване
+                  </button>
                 </div>
               )}
 
               {modalTask.makeupForDate ? (
-                <div className="bg-orange-100 border-2 border-orange-400 rounded-xl p-4 text-center">
-                  <div className="text-4xl mb-2">🔒</div>
-                  <p className="font-bold text-orange-800">Този ден се наваксва</p>
-                  <p className="text-sm text-orange-700 mt-1">На: {modalTask.makeupForDate}</p>
+                <div>
+                  <div className="bg-orange-100 border-2 border-orange-400 rounded-xl p-4 text-center mb-4">
+                    <div className="text-4xl mb-2">🔒</div>
+                    <p className="font-bold text-orange-800">Този ден се наваксва</p>
+                    <p className="text-sm text-orange-700 mt-1">На: {modalTask.makeupForDate}</p>
+                    <p className="text-xs text-gray-600 mt-2">Прогресът се управлява от деня на наваксване</p>
+                  </div>
+                  <button onClick={handleModalReset} className="w-full py-3 bg-gradient-to-r from-gray-400 to-gray-500 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
+                    🔄 Нулирай задачата
+                  </button>
                 </div>
               ) : (
-                <TaskActions
-                  task={modalTask}
-                  onUpdate={handleTaskUpdate}
-                  isMakeup={!!modalTask.makeupFromDate}
-                  onToggleInactive={onHabitInactivityChange ? handleToggleInactive : null}
-                />
+                <div>
+                  <TaskActions
+                    task={modalTask}
+                    onUpdate={handleTaskUpdate}
+                    isMakeup={!!modalTask.makeupFromDate}
+                    onToggleInactive={onHabitInactivityChange ? handleToggleInactive : null}
+                  />
+                  {modalTask.makeupFromDate ? (
+                    <div className="mt-3">
+                      <button onClick={handleModalReset} className="w-full py-3 bg-gradient-to-r from-gray-400 to-gray-500 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
+                        🔄 Нулирай задачата
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
+                      {modalTask.status !== 'completed' && !modalTask.habitInactive && (
+                        <button
+                          onClick={() => setShowMakeupPicker(true)}
+                          className="w-full py-2 bg-gradient-to-r from-orange-400 to-orange-500 text-white rounded-xl font-semibold text-sm hover:shadow-lg"
+                        >
+                          ↻ Наваксай на друга дата
+                        </button>
+                      )}
+                      {modalTask.status !== 'completed' && tasks.some(t => t.habitId === modalHabit.id && t.createdBy === 'manual' && !t.makeupFromDate && !t.makeupForDate && t.date !== dateStr) && (
+                        <button
+                          onClick={() => setShowUnlinkedPicker(true)}
+                          className="w-full py-2 bg-gradient-to-r from-teal-400 to-teal-500 text-white rounded-xl font-semibold text-sm hover:shadow-lg"
+                        >
+                          🔗 Свържи с отработен ден
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
 
               <div className="mt-4 pt-4 border-t border-gray-200">
@@ -676,6 +822,27 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
                   className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-indigo-400 focus:outline-none resize-none bg-white bg-opacity-80"
                 />
               </div>
+
+              {showMakeupPicker && (
+                <MakeupPicker
+                  currentDate={selectedDate}
+                  habit={modalHabit}
+                  allTasks={tasks}
+                  rule={modalRule}
+                  onSelect={handleMakeupSelect}
+                  onClose={() => setShowMakeupPicker(false)}
+                />
+              )}
+
+              {showUnlinkedPicker && (
+                <UnlinkedPicker
+                  currentDate={selectedDate}
+                  habit={modalHabit}
+                  allTasks={tasks}
+                  onSelect={handleUnlinkedSelect}
+                  onClose={() => setShowUnlinkedPicker(false)}
+                />
+              )}
             </div>
           </div>
         </div>
