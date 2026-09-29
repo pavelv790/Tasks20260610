@@ -109,8 +109,36 @@ useEffect(() => {
 
   // Преди заместване/изтриване на данните на АКТИВНИЯ профил: автоматично локално копие (само ако има
   // данни). При неуспех НЕ продължаваме мълчаливо — питаме потребителя.
+  // Сваля файл и иска потвърждение, че е свален, ПРЕДИ да се продължи със заместването/изтриването.
+  // „Откажи“ прекъсва действието (данните остават непокътнати).
+  const downloadThenConfirm = (payload, fileName, proceed) => {
+    let downloadFailed = false;
+    try {
+      exportToJson(payload, fileName);
+    } catch (err) {
+      console.error(err);
+      downloadFailed = true;
+    }
+    if (downloadFailed) playSound('error');
+    setConfirm({
+      title:         downloadFailed ? '⚠️ Файлът не се свали' : '📥 Провери дали файлът е свален',
+      message:       downloadFailed
+        ? 'Автоматичното сваляне на копие не успя. Свали файл ръчно с „Свали backup“ в Настройки, преди да продължиш — след това данните ще бъдат заменени/изтрити.'
+        : `Свален е файл „${fileName}“ (обикновено в папка „Изтегляния“). Провери, че наистина е там — ако не е, откажи и го свали ръчно с „Свали backup“.\n\nСлед потвърждение данните ще бъдат заменени/изтрити.`,
+      confirmLabel:  downloadFailed ? 'Продължи без файл' : 'Файлът е свален — продължи',
+      isDestructive: true,
+      onConfirm:     () => { setConfirm(null); proceed(); },
+      onClose:       () => setConfirm(null),
+    });
+  };
+
   const withSafetyCopy = async (proceed) => {
-    if (hasProfileData(data)) {
+    const hasData = hasProfileData(data);
+    const today   = new Date().toISOString().split('T')[0];
+    const next    = () => (hasData
+      ? downloadThenConfirm(data, `Задачи_${safeFileName(activeProfileName)}_преди_замяна_${today}.json`, proceed)
+      : proceed());
+    if (hasData) {
       const ok = await saveBackup(data, activeProfileId, { auto: true });
       if (!ok) {
         playSound('error');
@@ -119,31 +147,28 @@ useEffect(() => {
           message:       'Не можах да запиша резервно копие на текущите данни (може да няма място или хранилището е недостъпно).\n\nАко продължиш, текущите данни ще бъдат заменени/изтрити БЕЗ копие. Препоръчваме първо да свалиш файл с „Свали backup“.\n\nПродължаваш ли без копие?',
           confirmLabel:  'Продължи без копие',
           isDestructive: true,
-          onConfirm:     () => { setConfirm(null); proceed(); },
+          onConfirm:     () => { setConfirm(null); next(); },
           onClose:       () => setConfirm(null),
         });
         return;
       }
       setBackups(await listBackups(activeProfileId));
     }
-    proceed();
+    next();
   };
 
   // Преди заместване/изтриване на ВСИЧКИ профили: локалните копия също се трият, затова вместо
   // тях се сваля файл с всички профили (само ако някой профил има данни).
   const withAllProfilesFile = async (proceed) => {
-    let ok = true;
     try {
       const all = await onExportAllProfiles();
-      if (all.profiles.some(p => hasProfileData(p.data))) {
-        const today = new Date().toISOString().split('T')[0];
-        exportToJson(all, `Задачи_ВСИЧКИ_профили_преди_замяна_${today}.json`);
-      }
+      if (!all.profiles.some(p => hasProfileData(p.data))) { proceed(); return; }
+      const today = new Date().toISOString().split('T')[0];
+      downloadThenConfirm(all, `Задачи_ВСИЧКИ_профили_преди_замяна_${today}.json`, proceed);
+      return;
     } catch (err) {
       console.error(err);
-      ok = false;
     }
-    if (ok) { proceed(); return; }
     playSound('error');
     setConfirm({
       title:         '⚠️ Файлът с копие не се свали',
@@ -173,7 +198,7 @@ useEffect(() => {
         title:        '⚠️ Внимание!',
         message: isAll
           ? `Това ще замени ВСИЧКИ профили и данните им (${imported.profiles.length} профила)! Локалните резервни копия на всички профили също ще бъдат изтрити.\n\nПреди това автоматично ще се свали файл с текущите профили.\n\nПродължаваш ли?`
-          : `Това ще замени данните на текущия профил${activeProfileName ? ` „${activeProfileName}“` : ''}!\n\nПреди това автоматично се пази локално резервно копие на текущите данни.\n\nПродължаваш ли?`,
+          : `Това ще замени данните на текущия профил${activeProfileName ? ` „${activeProfileName}“` : ''}!\n\nПреди това автоматично се пази локално копие и се сваля файл с текущите данни (ще те попитаме дали е свален).\n\nПродължаваш ли?`,
         confirmLabel: 'Импортирай',
         onConfirm: () => {
           setConfirm(null);
@@ -205,7 +230,7 @@ useEffect(() => {
   const handleRestore = (key) => {
   setConfirm({
     title:        '⚠️ Потвърждение',
-    message:      `Данните на текущия профил${activeProfileName ? ` „${activeProfileName}“` : ''} ще бъдат заменени с backup-а.\n\nПреди това автоматично се пази локално копие на текущите данни.`,
+    message:      `Данните на текущия профил${activeProfileName ? ` „${activeProfileName}“` : ''} ще бъдат заменени с backup-а.\n\nПреди това автоматично се пази локално копие и се сваля файл с текущите данни (ще те попитаме дали е свален).`,
     confirmLabel: 'Възстанови',
     onConfirm: async () => {
       setConfirm(null);
@@ -231,7 +256,7 @@ useEffect(() => {
       title:        '🔴 КРИТИЧНО ПРЕДУПРЕЖДЕНИЕ!',
       message: isAll
         ? 'Това ще изтрие ВСИЧКИ профили и данните им! Локалните резервни копия на всички профили също ще бъдат изтрити.\n\nПреди това автоматично ще се свали файл с всички профили.'
-        : `Това ще изтрие всички данни на профил${activeProfileName ? ` „${activeProfileName}“` : ''}!\n\nПреди това автоматично се пази локално резервно копие (можеш да го възстановиш от „Резервни копия“).`,
+        : `Това ще изтрие всички данни на профил${activeProfileName ? ` „${activeProfileName}“` : ''}!\n\nПреди това автоматично се пази локално копие и се сваля файл (ще те попитаме дали е свален; локалното можеш да го възстановиш от „Резервни копия“).`,
       confirmLabel: 'Изтрий',
       isDestructive: true,
       onConfirm: () => {
