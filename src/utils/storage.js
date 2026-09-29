@@ -358,18 +358,41 @@ export const importAllProfiles = async (envelope) => {
 
 // ── Backup-и (per-profile) ─────────────────────────────────
 
-export const saveBackup = async (data, profileId) => {
+// Автоматичните копия (преди заместване/изтриване) имат ключ `backup_<id>_auto_<ts>` и собствен
+// лимит — така не изтласкват ръчните (`backup_<id>_<ts>`, лимит 5).
+const AUTO_TAG        = 'auto_';
+const MANUAL_BACKUPS  = 5;
+const AUTO_BACKUPS    = 3;
+
+// Има ли профилът какво да се губи (само реалното съдържание; празните dayOrders не се броят)
+export const hasProfileData = (data) =>
+  ['habits', 'tasks', 'rules', 'archivedHabits', 'todos'].some(k => Array.isArray(data?.[k]) && data[k].length > 0);
+
+const parseBackupKey = (key, prefix) => {
+  const rest = key.slice(prefix.length);
+  const auto = rest.startsWith(AUTO_TAG);
+  return { auto, timestamp: parseInt(auto ? rest.slice(AUTO_TAG.length) : rest) };
+};
+
+// options.auto — автоматично копие (отделен лимит). Връща true/false.
+export const saveBackup = async (data, profileId, { auto = false } = {}) => {
   try {
     const db = await getDB();
     const meta = await readMeta();
     const id = resolveId(meta, profileId);
     const prefix = backupPrefixFor(id);
-    await idbPut(db, `${prefix}${Date.now()}`, normalizeData(data));
+    const key = `${prefix}${auto ? AUTO_TAG : ''}${Date.now()}`;
+    await idbPut(db, key, normalizeData(data));
+    // Проверка, че записът реално е там (не мълчаливо неуспешен)
+    if (!(await idbGet(db, key))) return false;
 
     const allKeys = await idbAllKeys(db);
-    const backupKeys = allKeys.filter(k => typeof k === 'string' && k.startsWith(prefix)).sort();
-    if (backupKeys.length > 5) {
-      for (const k of backupKeys.slice(0, backupKeys.length - 5)) await idbDel(db, k);
+    const same = allKeys
+      .filter(k => typeof k === 'string' && k.startsWith(prefix) && parseBackupKey(k, prefix).auto === auto)
+      .sort((a, b) => parseBackupKey(a, prefix).timestamp - parseBackupKey(b, prefix).timestamp);
+    const limit = auto ? AUTO_BACKUPS : MANUAL_BACKUPS;
+    if (same.length > limit) {
+      for (const k of same.slice(0, same.length - limit)) await idbDel(db, k);
     }
     return true;
   } catch {
@@ -387,8 +410,8 @@ export const listBackups = async (profileId) => {
     return allKeys
       .filter(k => typeof k === 'string' && k.startsWith(prefix))
       .map(key => {
-        const ts = parseInt(key.slice(prefix.length));
-        return { key, timestamp: ts, dateStr: new Date(ts).toLocaleString('bg-BG') };
+        const { auto, timestamp: ts } = parseBackupKey(key, prefix);
+        return { key, auto, timestamp: ts, dateStr: new Date(ts).toLocaleString('bg-BG') };
       })
       .sort((a, b) => b.timestamp - a.timestamp);
   } catch {

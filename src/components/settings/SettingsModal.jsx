@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Download, Upload, Database, Trash2, Info, Users, Volume2, VolumeX } from 'lucide-react';
 import { exportToJson, importFromJson, validateAppData } from '../../utils/exportImport';
-import { saveBackup, listBackups, loadBackup } from '../../utils/storage';
+import { saveBackup, listBackups, loadBackup, hasProfileData } from '../../utils/storage';
 import ConfirmModal from '../ui/ConfirmModal';
 import ArchiveScreen from '../habits/ArchiveScreen';
 import HelpModal from '../ui/HelpModal';
@@ -107,6 +107,54 @@ useEffect(() => {
     }
   };
 
+  // Преди заместване/изтриване на данните на АКТИВНИЯ профил: автоматично локално копие (само ако има
+  // данни). При неуспех НЕ продължаваме мълчаливо — питаме потребителя.
+  const withSafetyCopy = async (proceed) => {
+    if (hasProfileData(data)) {
+      const ok = await saveBackup(data, activeProfileId, { auto: true });
+      if (!ok) {
+        playSound('error');
+        setConfirm({
+          title:         '⚠️ Автоматичното копие не успя',
+          message:       'Не можах да запиша резервно копие на текущите данни (може да няма място или хранилището е недостъпно).\n\nАко продължиш, текущите данни ще бъдат заменени/изтрити БЕЗ копие. Препоръчваме първо да свалиш файл с „Свали backup“.\n\nПродължаваш ли без копие?',
+          confirmLabel:  'Продължи без копие',
+          isDestructive: true,
+          onConfirm:     () => { setConfirm(null); proceed(); },
+          onClose:       () => setConfirm(null),
+        });
+        return;
+      }
+      setBackups(await listBackups(activeProfileId));
+    }
+    proceed();
+  };
+
+  // Преди заместване/изтриване на ВСИЧКИ профили: локалните копия също се трият, затова вместо
+  // тях се сваля файл с всички профили (само ако някой профил има данни).
+  const withAllProfilesFile = async (proceed) => {
+    let ok = true;
+    try {
+      const all = await onExportAllProfiles();
+      if (all.profiles.some(p => hasProfileData(p.data))) {
+        const today = new Date().toISOString().split('T')[0];
+        exportToJson(all, `Задачи_ВСИЧКИ_профили_преди_замяна_${today}.json`);
+      }
+    } catch (err) {
+      console.error(err);
+      ok = false;
+    }
+    if (ok) { proceed(); return; }
+    playSound('error');
+    setConfirm({
+      title:         '⚠️ Файлът с копие не се свали',
+      message:       'Не успях да подготвя файл с всички профили. Локалните резервни копия също ще бъдат изтрити.\n\nПродължаваш ли без файл?',
+      confirmLabel:  'Продължи без файл',
+      isDestructive: true,
+      onConfirm:     () => { setConfirm(null); proceed(); },
+      onClose:       () => setConfirm(null),
+    });
+  };
+
   const handleImport = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -124,14 +172,16 @@ useEffect(() => {
       setConfirm({
         title:        '⚠️ Внимание!',
         message: isAll
-          ? `Това ще замени ВСИЧКИ профили и данните им (${imported.profiles.length} профила)!\n\nПродължаваш ли?`
-          : `Това ще замени данните на текущия профил${activeProfileName ? ` „${activeProfileName}“` : ''}!\n\nПродължаваш ли?`,
+          ? `Това ще замени ВСИЧКИ профили и данните им (${imported.profiles.length} профила)! Локалните резервни копия на всички профили също ще бъдат изтрити.\n\nПреди това автоматично ще се свали файл с текущите профили.\n\nПродължаваш ли?`
+          : `Това ще замени данните на текущия профил${activeProfileName ? ` „${activeProfileName}“` : ''}!\n\nПреди това автоматично се пази локално резервно копие на текущите данни.\n\nПродължаваш ли?`,
         confirmLabel: 'Импортирай',
         onConfirm: () => {
-          onImport(imported);
-          setShowSuccess('import');
-          setTimeout(() => { setShowSuccess(null); onClose(); }, 2000);
           setConfirm(null);
+          (isAll ? withAllProfilesFile : withSafetyCopy)(() => {
+            onImport(imported);
+            setShowSuccess('import');
+            setTimeout(() => { setShowSuccess(null); onClose(); }, 2000);
+          });
         },
       });
     } catch (err) {
@@ -155,16 +205,22 @@ useEffect(() => {
   const handleRestore = (key) => {
   setConfirm({
     title:        '⚠️ Потвърждение',
-    message:      `Данните на текущия профил${activeProfileName ? ` „${activeProfileName}“` : ''} ще бъдат заменени с backup-а.`,
+    message:      `Данните на текущия профил${activeProfileName ? ` „${activeProfileName}“` : ''} ще бъдат заменени с backup-а.\n\nПреди това автоматично се пази локално копие на текущите данни.`,
     confirmLabel: 'Възстанови',
     onConfirm: async () => {
+      setConfirm(null);
+      // Първо зареждаме избраното копие — новото автоматично копие може да изтласка най-старото
       const backupData = await loadBackup(key);
-      if (backupData) {
+      if (!backupData) {
+        playSound('error');
+        setImportError('Избраното резервно копие не може да бъде прочетено. Текущите данни не са променени.');
+        return;
+      }
+      withSafetyCopy(() => {
         onImport(backupData);
         setShowSuccess('restore');
         setTimeout(() => { setShowSuccess(null); onClose(); }, 2000);
-      }
-      setConfirm(null);
+      });
     },
   });
 };
@@ -174,8 +230,8 @@ useEffect(() => {
     setConfirm({
       title:        '🔴 КРИТИЧНО ПРЕДУПРЕЖДЕНИЕ!',
       message: isAll
-        ? 'Това ще изтрие ВСИЧКИ профили и данните им завинаги!\n\nПрепоръчваме да експортираш преди това.'
-        : `Това ще изтрие всички данни на профил${activeProfileName ? ` „${activeProfileName}“` : ''} завинаги!\n\nПрепоръчваме да експортираш преди това.`,
+        ? 'Това ще изтрие ВСИЧКИ профили и данните им! Локалните резервни копия на всички профили също ще бъдат изтрити.\n\nПреди това автоматично ще се свали файл с всички профили.'
+        : `Това ще изтрие всички данни на профил${activeProfileName ? ` „${activeProfileName}“` : ''}!\n\nПреди това автоматично се пази локално резервно копие (можеш да го възстановиш от „Резервни копия“).`,
       confirmLabel: 'Изтрий',
       isDestructive: true,
       onConfirm: () => {
@@ -185,10 +241,12 @@ useEffect(() => {
           confirmLabel: 'Да, изтрий',
           isDestructive: true,
           onConfirm: () => {
-            onClearAll(scope);
-            setShowSuccess('clear');
-            setTimeout(() => { setShowSuccess(null); onClose(); }, 2000);
             setConfirm(null);
+            (isAll ? withAllProfilesFile : withSafetyCopy)(() => {
+              onClearAll(scope);
+              setShowSuccess('clear');
+              setTimeout(() => { setShowSuccess(null); onClose(); }, 2000);
+            });
           },
           onClose: () => setConfirm(null),
         });
@@ -376,7 +434,7 @@ useEffect(() => {
                   Резервни копия
                 </h3>
                 <p className="text-sm text-gray-600 mb-3">
-                  Създай локално резервно копие на текущия профил (пазят се последните 5).
+                  Създай локално резервно копие на текущия профил (пазят се последните 5). Преди „Зареди backup“, „Възстанови“ и „Изтрий данни“ се прави и автоматично копие (последните 3, с етикет „авто“).
                 </p>
                 <button onClick={handleBackup} className="w-full py-3 bg-gradient-to-r from-purple-400 to-purple-500 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
                   💾 Създай backup
@@ -387,7 +445,10 @@ useEffect(() => {
                     <p className="text-sm font-semibold text-gray-700">Налични backup-и:</p>
                     {backups.map(b => (
                       <div key={b.key} className="bg-white rounded-lg p-2 flex justify-between items-center">
-                        <span className="text-xs text-gray-600">{b.dateStr}</span>
+                        <span className="text-xs text-gray-600">
+                          {b.dateStr}
+                          {b.auto && <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-semibold">авто</span>}
+                        </span>
                         <button onClick={() => handleRestore(b.key)} className="px-3 py-1 bg-purple-500 text-white text-xs rounded-lg hover:bg-purple-600">
                           Възстанови
                         </button>
@@ -403,7 +464,7 @@ useEffect(() => {
                   <Trash2 className="w-5 h-5 text-red-600" />
                   Изтрий данни
                 </h3>
-                <p className="text-sm text-gray-600 mb-3">⚠️ Изтрива задачи и правила завинаги (двойно потвърждение)!</p>
+                <p className="text-sm text-gray-600 mb-3">⚠️ Изтрива задачи и правила (двойно потвърждение). Преди това се пази автоматично копие.</p>
                 <button onClick={() => runClear('profile')} className="w-full py-3 bg-gradient-to-r from-red-400 to-red-500 text-white rounded-xl font-semibold hover:shadow-lg transition-shadow">
                   🗑️ {multiProfile ? 'Изтрий данните на този профил' : 'Изтрий ВСИЧКО'}
                 </button>
