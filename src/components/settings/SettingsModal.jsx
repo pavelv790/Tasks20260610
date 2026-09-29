@@ -529,7 +529,7 @@ useEffect(() => {
                   За приложението
                 </h3>
                 <p className="text-sm text-gray-600">
-                  Habit Tracker PWA v2.0<br />
+                  Habit Tracker PWA v2.0.1<br />
                   React + Vite + Tailwind CSS
                 </p>
               </div>
