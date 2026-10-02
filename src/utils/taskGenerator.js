@@ -3,9 +3,9 @@
 // Отговорност: генерира задачи и обработва смяна на правило
 // ============================================================
 
-import { doesDateMatchRule } from './ruleEngine';
+import { doesDateMatchRule, computeDueDate } from './ruleEngine';
 import { formatDate, toMidnight } from './dateUtils';
-import { createTaskObject, isTaskCompleted, isEntirelyInactive } from './habitUtils';
+import { createTaskObject, isTaskCompleted, isEntirelyInactive, hasTaskProgress } from './habitUtils';
 
 // -------------------------------------------------------
 // Генерира задачи за един месец за дадена задача
@@ -38,7 +38,7 @@ export const generateTasksForMonth = (habit, rules, existingTasks, year, month, 
 
     const matchingRule = activeRules.find(r => doesDateMatchRule(date, r));
     if (matchingRule) {
-      newTasks.push(createTaskObject(habit, dateStr, matchingRule.id));
+      newTasks.push(createTaskObject(habit, dateStr, matchingRule.id, computeDueDate(dateStr, matchingRule)));
       existingDates.add(dateStr);
     }
   }
@@ -64,10 +64,10 @@ export const checkMissedTasks = (tasks) => {
     // Не пипаме makeup задачи
     if (task.makeupFromDate) return task;
 
-    const taskDate = toMidnight(new Date(task.date));
-    if (taskDate >= today) return task;
+    // Със краен срок (task.dueDate) задачата не е пропусната, докато срокът не мине
+    if ((task.dueDate ?? task.date) >= formatDate(today)) return task;
 
-    // Минала дата — определяме статус
+    // Минал срок — определяме статус
     const completions = task.completions ?? [];
     const subtasks   = task.subtasks ?? [];
 
@@ -113,7 +113,7 @@ export const applyRuleChange = (allTasks, habit, newRule, applyFromDate, futureO
         const alreadyExists = pastTasks.some(t => t.date === dateStr) || sealedTasks.some(t => t.date === dateStr);
         if (!alreadyExists) {
           if (doesDateMatchRule(toMidnight(d), oldRule)) {
-            sealedTasks.push(createTaskObject(habit, dateStr, oldRule.id));
+            sealedTasks.push(createTaskObject(habit, dateStr, oldRule.id, computeDueDate(dateStr, oldRule)));
           } else {
             // Ден, който НЕ е пасвал на старото правило — замразяваме го изрично като
             // "неутрален", за да не бъде погрешно оцветен спрямо новото правило.
@@ -210,4 +210,31 @@ export const applyRuleChange = (allTasks, habit, newRule, applyFromDate, futureO
   // Обединяваме и маркираме пропуснати (минали pending → missed)
   const combined = [...otherTasks, ...cleanedTasks, ...newTasks];
   return checkMissedTasks(combined);
+};
+// -------------------------------------------------------
+// Преизчислява крайния срок (dueDate) на задачите от правилото `rule`
+// (при смяна само на настройката „Краен срок" — без да се генерират нови задачи
+// и без да се губят бележки/прогрес).
+// Задача, която е била „пропусната" автоматично, но с новия срок пак е в срока си,
+// се връща като чакаща (pending / partial). Ръчно нулираните не се пипат.
+// -------------------------------------------------------
+export const restampDueDates = (tasks, rule) => {
+  if (!rule) return tasks;
+  const todayStr = formatDate(new Date());
+  return checkMissedTasks(tasks.map(task => {
+    if (task.habitId !== rule.habitId || task.ruleId !== rule.id) return task;
+    if (task.createdBy !== 'rule' || task.makeupFromDate) return task;
+
+    const due = computeDueDate(task.date, rule);
+    let next = { ...task };
+    if (due && due > task.date) next.dueDate = due;
+    else delete next.dueDate;
+
+    if ((next.dueDate ?? next.date) >= todayStr &&
+        (next.status === 'missed' || next.status === 'partial') &&
+        !next.manuallyReset && !next.makeupForDate && !isTaskCompleted(next)) {
+      next.status = hasTaskProgress(next) ? 'partial' : 'pending';
+    }
+    return next;
+  }));
 };

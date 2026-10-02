@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Search, CheckSquare, Square, MinusSquare } from 'lucide-react';
 import { toMidnight, formatDate } from '../../utils/dateUtils';
-import { isTaskCompleted, isEntirelyInactive } from '../../utils/habitUtils';
+import { isTaskCompleted, isEntirelyInactive, isTaskWaiting } from '../../utils/habitUtils';
 import { bulkMarkCompleted, bulkMakeInactive, bulkReset, pickCompletable, pickActivatable } from '../../utils/bulkTaskActions';
 import ConfirmModal from '../ui/ConfirmModal';
 import Toast from '../ui/Toast';
@@ -36,6 +36,7 @@ export default function MissedScreen({ habits, tasks, rules = [], onTasksUpdate,
         if (t.status !== 'missed' && t.status !== 'partial') return false;
         if (t.habitInactive || isEntirelyInactive(t)) return false;
         if (isTaskCompleted(t)) return false;
+        if (isTaskWaiting(t)) return false; // краен срок — още чака, не е пропусната
         if (t.makeupFromDate) return false;
         if (t.makeupForDate) {
           const makeupTask = tasks.find(m => m.date === t.makeupForDate && m.habitId === t.habitId);

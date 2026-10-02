@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import DateInput from '../ui/DateInput';
 import SearchableSelect from '../ui/SearchableSelect';
 import { doesDateMatchRule } from '../../utils/ruleEngine';
-import { isTaskCompleted, isEntirelyInactive, isHabitInactiveOn } from '../../utils/habitUtils';
+import { isTaskCompleted, isEntirelyInactive, isHabitInactiveOn, isTaskWaiting } from '../../utils/habitUtils';
 import { toMidnight, formatDate } from '../../utils/dateUtils';
 
 const PERIODS = [
@@ -109,6 +109,7 @@ export default function StatisticsScreen({ habits, tasks, rules }) {
       const task = taskMap.get(dateStr);
       if (!task) return false;
       if (task.status !== 'missed' && task.status !== 'partial') return false;
+      if (isTaskWaiting(task)) return false; // краен срок — още чака
       if (task.makeupForDate) {
         const makeupTask = taskMap.get(task.makeupForDate);
         if (makeupTask && isTaskCompleted(makeupTask)) return false;
@@ -155,6 +156,8 @@ export default function StatisticsScreen({ habits, tasks, rules }) {
             streak++;
           } else if (isToday && task?.status !== 'missed' && !task?.makeupForDate) {
             // днес, от правилото, не е missed и не се наваксва другаде — не прекъсва
+          } else if (task && isTaskWaiting(task)) {
+            // краен срок — още чака изпълнение, не прекъсва
           } else {
             counting = false;
           }

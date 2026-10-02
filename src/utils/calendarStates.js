@@ -18,11 +18,14 @@
 //   C13 Makeup + подзадачи частично
 //   C14 Отработен без връзка
 //   C15 Неактивна задача (заключена, не се брои)
+//   C16 Задача с краен срок, чака изпълнение (денят на появата е минал, срокът — не)
+//   C17 Ден на чакане: след появата на задача с краен срок, докато е чакала
+//       (до изпълнението ѝ / до срока) — виж getWaitingSource
 // ============================================================
 
 import { doesDateMatchRule } from './ruleEngine';
-import { toMidnight, formatShortDate } from './dateUtils';
-import { isTaskCompleted, isEntirelyInactive } from './habitUtils';
+import { toMidnight, formatShortDate, formatDate } from './dateUtils';
+import { isTaskCompleted, isEntirelyInactive, hasTaskProgress } from './habitUtils';
 
 export const getCalendarDayState = (date, task, rule) => {
   const check  = toMidnight(new Date(date));
@@ -141,10 +144,40 @@ export const getCalendarDayState = (date, task, rule) => {
 
   if (task.status === 'missed' && !task.manuallyReset) return STATE.C2;
 
+  // Чака изпълнение (краен срок): денят е минал, но срокът — не
+  if (isPast && task.dueDate && task.dueDate >= formatDate(today) && !hasTaskProgress(task)) {
+    return { ...STATE.C16, label: `Чака до ${formatShortDate(task.dueDate)}` };
+  }
+
   // Pending задача
   if (task.manuallyReset) return inRule ? STATE.C1 : STATE.C3;
   if (inRule) return isPast ? STATE.C2 : STATE.C1;
   return STATE.C3;
+};
+
+// Ден на чакане (C17): задача от същия навик с краен срок се е появила ПРЕДИ
+// `dateStr` и на този ден още е чакала — не е изпълнена преди него и срокът ѝ не е
+// минал. Връща тази задача (или null). Денят на изпълнението също се отбелязва.
+// Пропуснатите задачи остават отбелязани до срока си (историята на чакането).
+export const getWaitingSource = (dateStr, habitTasks) => {
+  for (const t of habitTasks) {
+    if (!t.dueDate || !(t.date < dateStr && dateStr <= t.dueDate)) continue;
+    if (t.makeupForDate || t.makeupFromDate || t.habitInactive || isEntirelyInactive(t)) continue;
+    if (isTaskCompleted(t)) {
+      const doneDay = t.completedAt ? formatDate(new Date(t.completedAt)) : null;
+      if (!doneDay || dateStr > doneDay) continue;
+    }
+    return t;
+  }
+  return null;
+};
+
+export const getWaitingDayState = (dateStr, source) => {
+  const doneDay = isTaskCompleted(source) && source.completedAt ? formatDate(new Date(source.completedAt)) : null;
+  const label = doneDay === dateStr
+    ? `✓ ${formatShortDate(source.date)}`
+    : `чака ${formatShortDate(source.date)}`;
+  return { ...STATE.C17, label };
 };
 
 // Обвива резултата с динамичен ring според inRule (само за бъдещи/днешни дни — за минали дни ring-ът е подвеждащ спрямо старо правило)
@@ -175,4 +208,6 @@ const STATE = {
   C13: { state: 'C13', bgColor: 'bg-gradient-to-br from-white to-green-300', ring: false, label: null, completionText: null },
   C14: { state: 'C14', bgColor: 'bg-white',                                  ring: false, label: 'Отработен', completionText: null, unlinkedRing: true },
   C15: { state: 'C15', bgColor: 'bg-gray-50',                                ring: false, label: 'Неактивна', completionText: null },
+  C16: { state: 'C16', bgColor: 'bg-sky-400',                                ring: false, label: 'Чака', completionText: null },
+  C17: { state: 'C17', bgColor: 'bg-sky-200',                                ring: false, label: 'чака', completionText: null },
 };

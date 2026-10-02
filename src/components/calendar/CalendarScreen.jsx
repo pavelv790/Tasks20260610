@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatDate, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG } from '../../utils/dateUtils';
 import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerator';
-import { getCalendarDayStateWithRing as getCalendarDayState } from '../../utils/calendarStates';
+import { getCalendarDayStateWithRing as getCalendarDayState, getWaitingSource, getWaitingDayState } from '../../utils/calendarStates';
 import DayModal from './DayModal';
 import SearchableSelect from '../ui/SearchableSelect';
 
@@ -65,6 +65,8 @@ export default function CalendarScreen({ habits, tasks, rules, onTasksUpdate, on
   };
 
   const monthYear = `${MONTH_NAMES_BG_CAP[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+  // Задачите с краен срок на избрания навик — за дните на чакане (C17)
+  const dueTasks = tasks.filter(t => t.habitId === selectedHabitId && t.dueDate);
   const todayStr  = formatDate(new Date());
 
   if (habits.length === 0) {
@@ -136,10 +138,15 @@ export default function CalendarScreen({ habits, tasks, rules, onTasksUpdate, on
 
             const dateStr  = formatDate(date);
             const task     = tasks.find(t => t.habitId === selectedHabitId && t.date === dateStr);
-            const dayState = getCalendarDayState(date, task, activeRule);
+            // Ден без собствена задача, в който чака задача с краен срок → C17;
+            // кликът отваря чакащата задача (деня на появата ѝ)
+            const waitingSource = !task ? getWaitingSource(dateStr, dueTasks) : null;
+            const dayState = waitingSource
+              ? getWaitingDayState(dateStr, waitingSource)
+              : getCalendarDayState(date, task, activeRule);
             const isToday  = dateStr === todayStr;
 
-            const isLight = dayState.bgColor === 'bg-gray-50' || dayState.bgColor.includes('from-white') || dayState.bgColor === 'bg-white';
+            const isLight = dayState.bgColor === 'bg-gray-50' || dayState.bgColor.includes('from-white') || dayState.bgColor === 'bg-white' || dayState.bgColor === 'bg-sky-200';
             const textColor = isLight ? 'text-gray-800' : 'text-white';
 
             const ringStyle = isToday
@@ -155,7 +162,11 @@ export default function CalendarScreen({ habits, tasks, rules, onTasksUpdate, on
             return (
               <div
                 key={idx}
-                onClick={() => { setSelectedDay({ date, task: task || null }); setShowDayModal(true); }}
+                onClick={() => {
+                  if (waitingSource) setSelectedDay({ date: new Date(waitingSource.date + 'T00:00:00'), task: waitingSource });
+                  else setSelectedDay({ date, task: task || null });
+                  setShowDayModal(true);
+                }}
                 className={`aspect-square flex flex-col rounded-lg transition-all cursor-pointer relative font-semibold hover:scale-105 ${
   !dayState.bgColor.includes('gradient') && !dayState.bgColor.includes('cyan') && !dayState.bgColor.includes('teal')
     ? dayState.bgColor : ''

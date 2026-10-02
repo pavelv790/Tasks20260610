@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { formatDate, formatDisplayDate, toMidnight, isPastDate } from '../../utils/dateUtils';
+import { formatDate, formatDisplayDate, isPastDate } from '../../utils/dateUtils';
 import { doesDateMatchRule } from '../../utils/ruleEngine';
-import { createTaskObject, resetTaskProgress, toggleTaskElementInactive } from '../../utils/habitUtils';
+import { createTaskObject, resetTaskProgress, toggleTaskElementInactive, isPastDue } from '../../utils/habitUtils';
 import { checkMissedTasks } from '../../utils/taskGenerator';
 import TaskActions from '../today/TaskActions';
 import MakeupPicker from './MakeupPicker';
@@ -98,8 +98,7 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
     if (task.makeupFromDate) {
       const source = allTasks.find(t => t.date === task.makeupFromDate && t.habitId === habit.id);
       if (source) {
-        const sourceDate = toMidnight(new Date(source.date));
-        extra.push({ ...source, makeupForDate: null, status: isPastDate(sourceDate) ? 'missed' : 'pending' });
+        extra.push({ ...source, makeupForDate: null, status: isPastDue(source) ? 'missed' : 'pending' });
       }
       if (!inRule) {
         const updated = allTasks.filter(t => t.id !== task.id);
@@ -143,8 +142,7 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
     if (task?.makeupFromDate) {
       const oldSource = allTasks.find(t => t.date === task.makeupFromDate && t.habitId === habit.id);
       if (oldSource) {
-        const oldDate = toMidnight(new Date(oldSource.date));
-        updates.push({ ...oldSource, makeupForDate: null, status: isPastDate(oldDate) ? 'missed' : 'pending' });
+        updates.push({ ...oldSource, makeupForDate: null, status: isPastDue(oldSource) ? 'missed' : 'pending' });
       }
     }
 

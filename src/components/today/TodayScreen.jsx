@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Search, Plus } from 'lucide-react';
-import { formatDate, formatDisplayDateWithToday, getWeekdayNameBG, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight, isPastDate } from '../../utils/dateUtils';
+import { formatDate, formatDisplayDate, formatDisplayDateWithToday, getWeekdayNameBG, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight } from '../../utils/dateUtils';
 import { doesDateMatchRule } from '../../utils/ruleEngine';
 import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerator';
-import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive, createTaskObject, resetTaskProgress, toggleTaskElementInactive } from '../../utils/habitUtils';
+import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive, createTaskObject, resetTaskProgress, toggleTaskElementInactive, isPastDue, isTaskWaitingOn } from '../../utils/habitUtils';
 import { getCalendarDayState } from '../../utils/calendarStates';
 import { useConfetti } from '../../hooks/useConfetti';
 import { playSound } from '../../utils/sounds';
@@ -131,15 +131,33 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
 
   // ── Общ ред: еднократни (най-отгоре по подразбиране) + навици (по подредба),
   // после евент. ръчна подредба за деня ──
+  // ── Чакащи задачи (с краен срок): появили са се в предишен ден, още не са
+  // изпълнени и срокът им не е минал → показват се и днес, точно преди задачата
+  // на навика за деня (ако има такава — тогава се виждат и двете) ──
+  const carriedTasks = tasks
+    .filter(t => isTaskWaitingOn(t, dateStr) && !isTaskCompleted(t))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   const naturalRefs = [
     ...dayTodos.map(t => ({ kind: 'todo', id: t.id })),
-    ...sortedHabits.map(h => ({ kind: 'habit', id: h.id })),
+    ...sortedHabits.flatMap(h => [
+      ...carriedTasks.filter(t => t.habitId === h.id).map(t => ({ kind: 'carry', id: t.id, habitId: h.id })),
+      { kind: 'habit', id: h.id },
+    ]),
   ];
   const dayOrderList = dayOrders[dateStr];
   // Елемент, който още не е в запазената ръчна подредба (напр. новосъздадена
   // еднократна задача), пада към естествения си край: еднократните — най-отгоре
   // (-1), навиците — най-отдолу (999), както досега.
-  const fallbackIdx = (ref) => (ref.kind === 'todo' ? -1 : 999);
+  // Чакащата задача (id = task.id) застава точно преди своя навик.
+  const fallbackIdx = (ref) => {
+    if (ref.kind === 'todo') return -1;
+    if (ref.kind === 'carry') {
+      const hi = dayOrderList.indexOf(ref.habitId);
+      return hi === -1 ? 998.5 : hi - 0.5;
+    }
+    return 999;
+  };
   const orderedRefs = dayOrderList
     ? [...naturalRefs].sort((a, b) => {
         const ia = dayOrderList.indexOf(a.id);
@@ -155,6 +173,12 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
       if (!todo) return null;
       if (todo.status === 'completed' && todo.id !== completingTodoId) return null;
       return { kind: 'todo', id: ref.id, todo };
+    }
+    if (ref.kind === 'carry') {
+      const habit = habits.find(h => h.id === ref.habitId);
+      const task  = tasks.find(t => t.id === ref.id);
+      if (!habit || !task) return null;
+      return { kind: 'habit', id: ref.id, habit, task, status: getEffectiveStatus(task), isInert: false, carried: true };
     }
     const habit = habits.find(h => h.id === ref.id);
     const task  = tasksForDate.find(t => t.habitId === ref.id);
@@ -196,7 +220,10 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
   const modalHabit = selectedEntry ? (habits.find(h => h.id === selectedEntry.habit.id) ?? selectedEntry.habit) : null;
   const modalTask  = selectedEntry ? (tasks.find(t => t.id === selectedEntry.task.id) ?? selectedEntry.task) : null;
   const modalRule  = modalHabit ? rules.find(r => r.habitId === modalHabit.id && r.isActive) : null;
-  const modalInRule = modalRule ? doesDateMatchRule(selectedDate, modalRule) : false;
+  // Денят на задачата в прозореца — за чакаща задача е денят на появата ѝ, не избраният ден
+  const modalDateStr = modalTask?.date ?? dateStr;
+  const modalDate    = new Date(modalDateStr + 'T00:00:00');
+  const modalInRule  = modalRule ? doesDateMatchRule(modalDate, modalRule) : false;
 
   const handleToggleInactive = ({ scope, index }) => {
     if (!modalHabit || !onHabitInactivityChange) return;
@@ -248,8 +275,7 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
     if (modalTask.makeupFromDate) {
       const oldSource = tasks.find(t => t.date === modalTask.makeupFromDate && t.habitId === modalHabit.id);
       if (oldSource) {
-        const oldDate = toMidnight(new Date(oldSource.date));
-        updates.push({ ...oldSource, makeupForDate: null, status: isPastDate(oldDate) ? 'missed' : 'pending' });
+        updates.push({ ...oldSource, makeupForDate: null, status: isPastDue(oldSource) ? 'missed' : 'pending' });
       }
     }
 
@@ -260,10 +286,10 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
     const currentTask = modalNote !== (modalTask.note || '') ? { ...modalTask, note: modalNote } : modalTask;
     if (modalInRule) {
       updates.push({ ...currentTask, makeupForDate: targetStr, status: currentTask.status === 'missed' ? 'missed' : currentTask.status });
-      updates.push({ ...targetTask, makeupFromDate: dateStr, status: 'makeup' });
+      updates.push({ ...targetTask, makeupFromDate: modalDateStr, status: 'makeup' });
     } else {
       updates.push({ ...currentTask, makeupFromDate: targetStr, status: currentTask.status === 'completed' ? 'completed' : 'pending' });
-      updates.push({ ...targetTask, makeupForDate: dateStr });
+      updates.push({ ...targetTask, makeupForDate: modalDateStr });
     }
 
     let updated = [...tasks];
@@ -282,7 +308,7 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
     if (!modalTask) return;
     const noteChanged = modalNote !== (modalTask.note || '');
     const updatedCurrent  = { ...modalTask, makeupForDate: unlinkedTask.date, ...(noteChanged ? { note: modalNote } : {}) };
-    const updatedUnlinked = { ...unlinkedTask, makeupFromDate: dateStr };
+    const updatedUnlinked = { ...unlinkedTask, makeupFromDate: modalDateStr };
     let updated = tasks.map(t => t.id === updatedCurrent.id ? updatedCurrent : t);
     updated = updated.map(t => t.id === updatedUnlinked.id ? updatedUnlinked : t);
     onTasksUpdate(checkMissedTasks(updated), true);
@@ -300,8 +326,7 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
     if (modalTask.makeupFromDate) {
       const source = tasks.find(t => t.date === modalTask.makeupFromDate && t.habitId === modalHabit.id);
       if (source) {
-        const sourceDate = toMidnight(new Date(source.date));
-        extra.push({ ...source, makeupForDate: null, status: isPastDate(sourceDate) ? 'missed' : 'pending' });
+        extra.push({ ...source, makeupForDate: null, status: isPastDue(source) ? 'missed' : 'pending' });
       }
       if (!modalInRule) {
         const updated = tasks.filter(t => t.id !== modalTask.id);
@@ -553,17 +578,17 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
                 />
               );
             }
-            const { habit, task, status } = it;
+            const { habit, task, status, carried } = it;
 
             if (it.isInert) {
               return (
                 <div
                   key={task.id}
                   draggable={!isSearching}
-                  onDragStart={e => !isSearching && handleDragStart(e, habit.id)}
+                  onDragStart={e => !isSearching && handleDragStart(e, it.id)}
                   onDragOver={e => !isSearching && e.preventDefault()}
-                  onDrop={e => !isSearching && handleDrop(e, habit.id)}
-                  className={`w-full bg-gray-100 border border-gray-300 rounded-xl shadow-md p-4 transition-all opacity-75 ${draggedId === habit.id ? 'opacity-50 scale-95' : ''}`}
+                  onDrop={e => !isSearching && handleDrop(e, it.id)}
+                  className={`w-full bg-gray-100 border border-gray-300 rounded-xl shadow-md p-4 transition-all opacity-75 ${draggedId === it.id ? 'opacity-50 scale-95' : ''}`}
                 >
                   <div className="flex items-start gap-2">
                     <span className="text-gray-400 cursor-grab active:cursor-grabbing text-lg leading-none pt-1">⋮⋮</span>
@@ -581,13 +606,13 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
                     </div>
                     <div className="flex flex-col gap-0.5 ml-1">
                       <button
-                        onClick={() => moveItem(habit.id, -1)}
+                        onClick={() => moveItem(it.id, -1)}
                         disabled={isSearching || idx === 0}
                         className="p-0.5 hover:bg-white hover:bg-opacity-50 rounded transition-colors disabled:opacity-30 text-xs leading-none"
                         title="Премести нагоре"
                       >▲</button>
                       <button
-                        onClick={() => moveItem(habit.id, 1)}
+                        onClick={() => moveItem(it.id, 1)}
                         disabled={isSearching || idx === filteredItems.length - 1}
                         className="p-0.5 hover:bg-white hover:bg-opacity-50 rounded transition-colors disabled:opacity-30 text-xs leading-none"
                         title="Премести надолу"
@@ -600,9 +625,9 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
 
             const progressText = getProgressText(task);
             const activeRule = rules.find(r => r.habitId === habit.id && r.isActive);
-            const dayState = getCalendarDayState(selectedDate, task, activeRule);
+            const dayState = getCalendarDayState(carried ? task.date : selectedDate, task, activeRule);
 
-            const isLight = dayState.bgColor === 'bg-gray-50' || dayState.bgColor.includes('from-white') || dayState.bgColor === 'bg-white';
+            const isLight = dayState.bgColor === 'bg-gray-50' || dayState.bgColor.includes('from-white') || dayState.bgColor === 'bg-white' || dayState.bgColor === 'bg-sky-200';
             const textColor = isLight ? 'text-gray-800' : 'text-white';
 
             let bgColor;
@@ -617,13 +642,20 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
             else if (status === 'makeup') { statusIcon = '↻'; statusText = 'Наваксване'; }
             else if (status === 'missed') { statusIcon = '✗'; statusText = 'Пропуснато'; }
             else if (status === 'inactive') { statusIcon = '⏸'; statusText = 'Неактивна'; }
+            if (carried && status === 'pending') { statusIcon = '⏳'; statusText = 'Чака изпълнение'; }
+            // Срок: „от 21 октомври · до 31 октомври" за чакаща; „до 31 октомври" за днешна със срок
+            const dueText = task.dueDate && status !== 'missed'
+              ? (carried
+                  ? `от ${formatDisplayDate(new Date(task.date + 'T00:00:00'))} · срок до ${formatDisplayDate(new Date(task.dueDate + 'T00:00:00'))}`
+                  : `срок до ${formatDisplayDate(new Date(task.dueDate + 'T00:00:00'))}`)
+              : null;
 
             return (
               <div key={task.id} draggable={!isSearching}
-                onDragStart={e => !isSearching && handleDragStart(e, habit.id)}
+                onDragStart={e => !isSearching && handleDragStart(e, it.id)}
                 onDragOver={e => !isSearching && e.preventDefault()}
-                onDrop={e => !isSearching && handleDrop(e, habit.id)}
-                className={`w-full ${bgColor} rounded-xl shadow-md p-4 transition-all hover:shadow-lg ${draggedId === habit.id ? 'opacity-50 scale-95' : ''}`}
+                onDrop={e => !isSearching && handleDrop(e, it.id)}
+                className={`w-full ${bgColor} rounded-xl shadow-md p-4 transition-all hover:shadow-lg ${draggedId === it.id ? 'opacity-50 scale-95' : ''}`}
                 style={{
                   ...(dayState.bgColor.includes('gradient') ? { background: 'linear-gradient(to bottom right, white, #86efac)' } : {}),
                   ...(dayState.bgColor === 'bg-white' ? { background: 'white' } : {}),
@@ -637,6 +669,9 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
                       <div>
                         <h3 className={`font-bold ${textColor}`}>{habit.name}</h3>
                         <p className={`text-sm ${statusColor} font-semibold`}>{statusIcon} {statusText}</p>
+                        {dueText && (
+                          <p className={`text-xs ${isLight ? 'text-sky-700' : 'text-white opacity-90'} font-semibold`}>📅 {dueText}</p>
+                        )}
                         {expandedInfo === task.id && habit.description && (
                           <p className="text-xs mt-1 text-gray-600 bg-white bg-opacity-70 rounded-lg px-2 py-1">{habit.description}</p>
                         )}
@@ -690,13 +725,13 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
                     >📝</button>
                     <div className="flex flex-col gap-0.5">
                       <button
-                        onClick={() => moveItem(habit.id, -1)}
+                        onClick={() => moveItem(it.id, -1)}
                         disabled={isSearching || idx === 0}
                         className="p-0.5 hover:bg-white hover:bg-opacity-50 rounded transition-colors disabled:opacity-30 text-xs leading-none"
                         title="Премести нагоре"
                       >▲</button>
                       <button
-                        onClick={() => moveItem(habit.id, 1)}
+                        onClick={() => moveItem(it.id, 1)}
                         disabled={isSearching || idx === filteredItems.length - 1}
                         className="p-0.5 hover:bg-white hover:bg-opacity-50 rounded transition-colors disabled:opacity-30 text-xs leading-none"
                         title="Премести надолу"
@@ -754,7 +789,10 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
               <div className="flex justify-between items-center mb-6">
                 <div>
                   <h2 className="text-xl font-bold text-gray-800">{modalHabit.name}</h2>
-                  <p className="text-sm text-gray-500">{formatDisplayDateWithToday(selectedDate)}</p>
+                  <p className="text-sm text-gray-500">{formatDisplayDateWithToday(modalDate)}</p>
+                  {modalTask.dueDate && !isTaskCompleted(modalTask) && modalTask.status !== 'missed' && (
+                    <p className="text-xs font-semibold text-sky-700">⏳ Срок до {formatDisplayDate(new Date(modalTask.dueDate + 'T00:00:00'))}</p>
+                  )}
                 </div>
                 <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">✕</button>
               </div>
@@ -808,7 +846,7 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
                           ↻ Наваксай на друга дата
                         </button>
                       )}
-                      {modalTask.status !== 'completed' && tasks.some(t => t.habitId === modalHabit.id && t.createdBy === 'manual' && !t.makeupFromDate && !t.makeupForDate && t.date !== dateStr) && (
+                      {modalTask.status !== 'completed' && tasks.some(t => t.habitId === modalHabit.id && t.createdBy === 'manual' && !t.makeupFromDate && !t.makeupForDate && t.date !== modalDateStr) && (
                         <button
                           onClick={() => setShowUnlinkedPicker(true)}
                           className="w-full py-2 bg-gradient-to-r from-teal-400 to-teal-500 text-white rounded-xl font-semibold text-sm hover:shadow-lg"
@@ -834,7 +872,7 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
 
               {showMakeupPicker && (
                 <MakeupPicker
-                  currentDate={selectedDate}
+                  currentDate={modalDate}
                   habit={modalHabit}
                   allTasks={tasks}
                   rule={modalRule}
@@ -845,7 +883,7 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
 
               {showUnlinkedPicker && (
                 <UnlinkedPicker
-                  currentDate={selectedDate}
+                  currentDate={modalDate}
                   habit={modalHabit}
                   allTasks={tasks}
                   onSelect={handleUnlinkedSelect}

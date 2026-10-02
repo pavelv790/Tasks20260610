@@ -3,7 +3,7 @@
 // Отговорност: проверява дали дадена дата попада в правило
 // ============================================================
 
-import { toMidnight } from './dateUtils';
+import { toMidnight, formatDate } from './dateUtils';
 
 // Главна функция — връща true ако датата попада в правилото
 export const doesDateMatchRule = (date, rule) => {
@@ -92,4 +92,71 @@ export const getNextRuleDate = (fromDate, rule, maxDays = 60) => {
     if (doesDateMatchRule(candidate, rule)) return toMidnight(candidate);
   }
   return null;
+};
+
+// -------------------------------------------------------
+// Краен срок („показвай всеки ден, докато не я изпълня")
+//
+// rule.deadline (по избор):
+//   { type: 'days',     days: N }          — показва се N дни (вкл. деня на появата)
+//   { type: 'weekdays', weekdays: [0..6] } — до първия такъв ден от седмицата (0=Пон)
+//   { type: 'monthly',  day: 1..31 }       — до първото такова число (клипва се към
+//                                            последния ден на по-късите месеци)
+//   { type: 'yearly',   month: 0..11, day } — до първата такава дата
+//   { type: 'next' }                       — до деня преди следващото повторение
+//
+// При weekdays/monthly/yearly денят на появата НЕ се брои — ако съвпада, срокът е
+// следващото срещане (напр. появява се на 21-во, срок „21-во" → 21-во следващия месец).
+// Денят на срока е последният ден, в който задачата още НЕ е пропусната.
+// -------------------------------------------------------
+
+const lastDayOf = (y, m) => new Date(y, m + 1, 0).getDate();
+
+// Първата дата СЛЕД `start`, за която match(date) е true (търси до maxDays напред)
+const firstAfter = (start, match, maxDays) => {
+  for (let i = 1; i <= maxDays; i++) {
+    const c = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    if (match(c)) return c;
+  }
+  return null;
+};
+
+// Връща "YYYY-MM-DD" — последният ден, в който задачата от `dateStr` още не е
+// пропусната, или null (няма краен срок → задачата важи само за деня си).
+export const computeDueDate = (dateStr, rule) => {
+  const dl = rule?.deadline;
+  if (!dl || !dateStr) return null;
+  const start = new Date(dateStr + 'T00:00:00');
+  let due;
+
+  switch (dl.type) {
+    case 'days': {
+      const n = Math.max(1, parseInt(dl.days) || 1);
+      due = new Date(start.getFullYear(), start.getMonth(), start.getDate() + n - 1);
+      break;
+    }
+    case 'weekdays': {
+      const days = dl.weekdays ?? [];
+      if (days.length === 0) return null;
+      due = firstAfter(start, c => days.includes(c.getDay() === 0 ? 6 : c.getDay() - 1), 7);
+      break;
+    }
+    case 'monthly':
+      due = firstAfter(start, c => c.getDate() === Math.min(dl.day, lastDayOf(c.getFullYear(), c.getMonth())), 62);
+      break;
+    case 'yearly':
+      due = firstAfter(start, c =>
+        c.getMonth() === dl.month && c.getDate() === Math.min(dl.day, lastDayOf(c.getFullYear(), dl.month)), 370);
+      break;
+    case 'next': {
+      const maxDays = Math.max(800, (parseInt(rule.customInterval) || 0) + 1);
+      const next = getNextRuleDate(start, rule, maxDays);
+      if (!next) return null;
+      due = new Date(next.getFullYear(), next.getMonth(), next.getDate() - 1);
+      break;
+    }
+    default:
+      return null;
+  }
+  return due ? formatDate(due) : null;
 };

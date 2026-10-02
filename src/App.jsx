@@ -5,7 +5,7 @@
     deleteProfile, resetAllProfiles, importAllProfiles, loadAllProfilesExport,
   } from './utils/storage';
   import { isMultiProfileExport } from './utils/exportImport';
-  import { checkMissedTasks, generateTasksForMonth, applyRuleChange } from './utils/taskGenerator';
+  import { checkMissedTasks, generateTasksForMonth, applyRuleChange, restampDueDates } from './utils/taskGenerator';
   import { generateId, hasTaskProgress, syncTaskInactivity, getHabitInactiveFrom, isHabitInactiveOn } from './utils/habitUtils';
   import { formatDate } from './utils/dateUtils';
   import { useNotifications } from './hooks/useNotifications';
@@ -311,6 +311,11 @@
               // Неактивността се пренася само за днес и напред (миналото остава непокътнато)
               return task.date >= todayStr ? syncTaskInactivity(rebuilt, habit) : rebuilt;
             });
+            // Сменен е само „Краен срок" → преизчисляваме срока на задачите от правилото
+            // (без нова генерация — бележките и прогресът остават)
+            if (JSON.stringify(oldRule?.deadline ?? null) !== JSON.stringify(rule.deadline ?? null)) {
+              updatedTasks = restampDueDates(updatedTasks, rule);
+            }
           }
         }
 

@@ -29,8 +29,14 @@ const ruleHasChanged = (oldRule, newRule) => {
   return false;
 };
 
+// Краен срок — отделно от ruleHasChanged: смяната му само преизчислява срока на
+// съществуващите задачи (App.handleHabitSave → restampDueDates), без да ги генерира наново.
+const deadlineHasChanged = (oldRule, newRule) =>
+  JSON.stringify(oldRule?.deadline ?? null) !== JSON.stringify(newRule?.deadline ?? null);
+
 const habitHasChanged = (oldHabit, oldRule, newHabit, newRule) => {
   if (!oldHabit) return true;
+  if (deadlineHasChanged(oldRule, newRule)) return true;
   if (oldHabit.name         !== newHabit.name)         return true;
   if (oldHabit.isDefault    !== newHabit.isDefault)     return true;
   if (oldHabit.timesPerDay  !== newHabit.timesPerDay)   return true;
@@ -77,6 +83,19 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
   const [yearlyMonth,    setYearlyMonth]    = useState(existingRule?.yearlyMonth   ?? 0);
   const [yearlyDay,      setYearlyDay]      = useState(existingRule?.yearlyDay     ?? 1);
   const [startDate,      setStartDate]      = useState(existingRule?.startDate     ?? formatDate(new Date()));
+
+  // ── Краен срок („показвай всеки ден, докато не я изпълня") ──
+  const dl = existingRule?.deadline ?? null;
+  const [deadlineOn,        setDeadlineOn]        = useState(!!dl);
+  const [deadlineType,      setDeadlineType]      = useState(dl?.type ?? 'days');
+  const [deadlineDays,      setDeadlineDays]      = useState(dl?.type === 'days'     ? dl.days     : 5);
+  const [deadlineWeekdays,  setDeadlineWeekdays]  = useState(dl?.type === 'weekdays' ? dl.weekdays : []);
+  const [deadlineMonthDay,  setDeadlineMonthDay]  = useState(dl?.type === 'monthly'  ? dl.day      : 31);
+  const [deadlineYearMonth, setDeadlineYearMonth] = useState(dl?.type === 'yearly'   ? dl.month    : 11);
+  const [deadlineYearDay,   setDeadlineYearDay]   = useState(dl?.type === 'yearly'   ? dl.day      : 31);
+
+  const isDaily = ruleType === 'simple' && simplePattern === 'daily';
+  const isOnce  = ruleType === 'simple' && simplePattern === 'today';
 
   // ── UI state ─────────────────────────────────────────
   const [error,           setError]           = useState('');
@@ -138,6 +157,15 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
       monthlyDay, yearlyMonth, yearlyDay, complexDays, startDate,
     });
 
+    let deadline = null;
+    if (deadlineOn && !isDaily && !(isOnce && deadlineType === 'next')) {
+      if (deadlineType === 'days')     deadline = { type: 'days', days: Math.max(1, parseInt(deadlineDays) || 1) };
+      if (deadlineType === 'weekdays') deadline = { type: 'weekdays', weekdays: [...deadlineWeekdays].sort((a, b) => a - b) };
+      if (deadlineType === 'monthly')  deadline = { type: 'monthly', day: deadlineMonthDay };
+      if (deadlineType === 'yearly')   deadline = { type: 'yearly', month: deadlineYearMonth, day: deadlineYearDay };
+      if (deadlineType === 'next')     deadline = { type: 'next' };
+    }
+
     const newRule = {
       id:             ruleChanged ? generateId('rule') : existingRule.id,
       habitId,
@@ -150,6 +178,7 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
       complexDays:    ruleType === 'complex' ? complexDays : [],
       startDate,
       isActive: true,
+      deadline,
     };
 
     return { newHabit, newRule };
@@ -164,6 +193,10 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
 
     if (ruleType === 'complex' && complexDays.length === 0) {
       setError('Изберете поне един ден от седмицата'); return;
+    }
+
+    if (deadlineOn && !isDaily && deadlineType === 'weekdays' && deadlineWeekdays.length === 0) {
+      setError('Изберете поне един ден от седмицата за крайния срок'); return;
     }
 
     const { newHabit, newRule } = buildObjects();
@@ -491,6 +524,115 @@ onFocus={e => e.target.select()}
 
               </div>
             </div>
+
+            {/* Краен срок */}
+            {!isDaily && (
+              <div className="border-2 border-gray-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-sm font-semibold text-gray-700">⏳ Показвай всеки ден, докато не я изпълня</span>
+                    <p className="text-xs text-gray-500">Задачата се появява в деня от правилото и остава в „Днес" всеки ден до изпълнението ѝ. Ако не е изпълнена до крайния срок, става пропусната.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDeadlineOn(p => !p)}
+                    className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${deadlineOn ? 'bg-gradient-to-r from-sky-500 to-sky-600' : 'bg-gray-300'}`}
+                  >
+                    <span className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-md transition-all duration-300 ${deadlineOn ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                {deadlineOn && (
+                  <div className="space-y-4 bg-gray-50 p-4 rounded-xl">
+                    <p className="text-sm font-bold text-gray-700">Краен срок</p>
+
+                    {/* Брой дни */}
+                    <div>
+                      <RadioOption current={deadlineType === 'days'} onChange={() => setDeadlineType('days')} label="⚙️ Брой дни" />
+                      <div className="ml-6 mt-2">
+                        <label className="block text-xs text-gray-600 mb-1">Колко дни да се показва (заедно с деня на появата)</label>
+                        <input type="number" value={deadlineDays} min="1" max="9999"
+                          onChange={e => setDeadlineDays(Math.max(1, parseInt(e.target.value) || 1))}
+                          onFocus={e => e.target.select()}
+                          disabled={deadlineType !== 'days'}
+                          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-400 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">* Напр. 5: появява се на 21-во → последно се показва на 25-о, на 26-о е пропусната</p>
+                      </div>
+                    </div>
+
+                    {/* Ден от седмицата */}
+                    <div>
+                      <RadioOption current={deadlineType === 'weekdays'} onChange={() => setDeadlineType('weekdays')} label="🗓️ До ден от седмицата" />
+                      <div className="ml-6 flex gap-2 flex-wrap mt-2">
+                        {WEEKDAY_NAMES_BG.map((day, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setDeadlineWeekdays(prev => prev.includes(idx) ? prev.filter(d => d !== idx) : [...prev, idx])}
+                            disabled={deadlineType !== 'weekdays'}
+                            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                              deadlineWeekdays.includes(idx) && deadlineType === 'weekdays'
+                                ? 'bg-sky-500 text-white shadow-md scale-105'
+                                : 'bg-white text-gray-600 hover:bg-gray-100'
+                            } ${deadlineType !== 'weekdays' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {day}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Число от месеца */}
+                    <div>
+                      <RadioOption current={deadlineType === 'monthly'} onChange={() => setDeadlineType('monthly')} label="📆 До число от месеца" />
+                      <div className="ml-6 mt-2">
+                        <input type="number" value={deadlineMonthDay} min="1" max="31"
+                          onChange={e => setDeadlineMonthDay(Math.max(1, Math.min(31, parseInt(e.target.value) || 1)))}
+                          onFocus={e => e.target.select()}
+                          disabled={deadlineType !== 'monthly'}
+                          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-400 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">* За месеци с по-малко дни се използва последният наличен ден</p>
+                      </div>
+                    </div>
+
+                    {/* Дата от годината */}
+                    <div>
+                      <RadioOption current={deadlineType === 'yearly'} onChange={() => setDeadlineType('yearly')} label="🗓️ До дата от годината" />
+                      <div className="ml-6 mt-2 grid grid-cols-2 gap-2">
+                        <select value={deadlineYearMonth} onChange={e => setDeadlineYearMonth(parseInt(e.target.value))}
+                          disabled={deadlineType !== 'yearly'}
+                          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-400 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                        >
+                          {['Януари','Февруари','Март','Април','Май','Юни','Юли','Август','Септември','Октомври','Ноември','Декември'].map((m,i) => (
+                            <option key={i} value={i}>{m}</option>
+                          ))}
+                        </select>
+                        <input type="number" value={deadlineYearDay} min="1" max="31"
+                          onChange={e => setDeadlineYearDay(Math.max(1, Math.min(31, parseInt(e.target.value) || 1)))}
+                          onFocus={e => e.target.select()}
+                          disabled={deadlineType !== 'yearly'}
+                          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-400 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* До следващото повторение (няма смисъл при „Еднократно") */}
+                    {!isOnce && (
+                      <RadioOption current={deadlineType === 'next'} onChange={() => setDeadlineType('next')} label="🔁 До следващото повторение" />
+                    )}
+
+                    {(deadlineType === 'weekdays' || deadlineType === 'monthly' || deadlineType === 'yearly') && (
+                      <p className="text-xs text-gray-500">* Избраният ден е последният, в който задачата още не е пропусната. Ако съвпада с деня на появата, срокът е следващото му срещане.</p>
+                    )}
+                    {deadlineType === 'next' && (
+                      <p className="text-xs text-gray-500">* Напр. всеки месец на 21-во: срокът е 20-о число на следващия месец.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

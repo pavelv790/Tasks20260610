@@ -87,9 +87,45 @@ export const toggleTaskElementInactive = (task, scope, index) => {
   if (next.manuallyReset && next.status !== 'completed') return next;
   next.completedAt = null;
   if (isEntirelyInactive(next)) next.status = 'pending';
+  else if (!isPastDue(next)) next.status = hasTaskProgress(next) ? 'partial' : 'pending'; // още в срока
   else next.status = hasTaskProgress(next) ? 'partial' : 'missed';
   return next;
 };
+
+// ─────────────────────────────────────────────────────────
+// Краен срок („показвай всеки ден, докато не я изпълня" — виж ruleEngine.computeDueDate)
+//
+// task.dueDate ("YYYY-MM-DD") се подпечатва при генериране от правило с `deadline`.
+// Без dueDate задачата важи само за деня си (както досега).
+// ─────────────────────────────────────────────────────────
+
+// Последният ден, в който задачата още не е пропусната
+export const getTaskDue = (task) => task?.dueDate ?? task?.date;
+
+// Изтекъл ли е срокът на задачата (спрямо днес)?
+export const isPastDue = (task) => getTaskDue(task) < formatDate(new Date());
+
+// „Чакаща" задача: появила се е преди `onDateStr`, срокът ѝ още не е минал към
+// `onDateStr` и не е изпълнена ДО този ден. Такава задача се показва в „Днес" и на
+// дните след появата си (до изпълнението ѝ или до срока).
+// Наваксваните / наваксващите и неактивните не чакат.
+export const isTaskWaitingOn = (task, onDateStr) => {
+  if (!task?.dueDate) return false;
+  if (!(task.date < onDateStr && onDateStr <= task.dueDate)) return false;
+  if (task.makeupForDate || task.makeupFromDate) return false;
+  if (task.habitInactive || isEntirelyInactive(task)) return false;
+  if (task.status === 'missed') return false;
+  if (isTaskCompleted(task)) {
+    // Изпълнена — „чакала" е само до деня на изпълнението (за изглед на минал ден)
+    const doneDay = task.completedAt ? formatDate(new Date(task.completedAt)) : null;
+    return !!doneDay && onDateStr < doneDay;
+  }
+  return true;
+};
+
+// Задачата още е в срока си (след деня на появата) и чака изпълнение — към днес
+export const isTaskWaiting = (task) =>
+  !isTaskCompleted(task) && isTaskWaitingOn(task, formatDate(new Date()));
 
 // Има ли задачата поне едно активно нещо за правене?
 export const hasActiveRequirements = (task) => {
@@ -199,7 +235,7 @@ export const getEffectiveStatus = (task) => {
 };
 
 // Генерира нова задача за дадена задача и дата
-export const createTaskObject = (habit, dateStr, ruleId) => {
+export const createTaskObject = (habit, dateStr, ruleId, dueDate = null) => {
   const base = {
     id: generateId('task'),
     habitId: habit.id,
@@ -225,6 +261,7 @@ export const createTaskObject = (habit, dateStr, ruleId) => {
     createdBy: 'rule',
     ruleId: ruleId ?? null,
   };
+  if (dueDate && dueDate > dateStr) base.dueDate = dueDate;
   // Новите инстанции наследяват неактивността от дефиницията на навика.
   return syncTaskInactivity(base, habit);
 };
