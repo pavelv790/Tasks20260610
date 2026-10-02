@@ -6,7 +6,7 @@
   } from './utils/storage';
   import { isMultiProfileExport } from './utils/exportImport';
   import { checkMissedTasks, generateTasksForMonth, applyRuleChange } from './utils/taskGenerator';
-  import { generateId, hasTaskProgress, syncTaskInactivity } from './utils/habitUtils';
+  import { generateId, hasTaskProgress, syncTaskInactivity, getHabitInactiveFrom, isHabitInactiveOn } from './utils/habitUtils';
   import { formatDate } from './utils/dateUtils';
   import { useNotifications } from './hooks/useNotifications';
 
@@ -314,6 +314,20 @@
           }
         }
 
+        // „Активност" в HabitModal: превключвателят за цялата задача е сменен →
+        // от днес нататък печатът се преизчислява изцяло (изключен = активна от днес,
+        // включен = неактивна от днес). Миналото не се пипа.
+        const oldHabit = prev.habits.find(h => h.id === habit.id);
+        if (oldHabit && getHabitInactiveFrom(oldHabit) !== getHabitInactiveFrom(habit)) {
+          const todayStr = formatDate(new Date());
+          updatedTasks = updatedTasks.map(task => {
+            if (task.habitId !== habit.id || task.date < todayStr) return task;
+            const copy = { ...task };
+            delete copy.habitInactive;
+            return syncTaskInactivity(copy, habit);
+          });
+        }
+
         return {
           ...prev,
           habits: normalizedHabits,
@@ -396,10 +410,51 @@
       setData(prev => ({ ...prev, habits: reorderedHabits }));
     };
 
-    // Превключва „неактивно" на дефиницията на навика и пренася го върху
-    // задачите за ДНЕС и НАПРЕД (миналото остава непокътнато).
+    // Превключва „неактивно" от прозореца за действия (виж раздел 4.8).
     // patch: { inactive } | { inactiveCompletions } | { inactiveSubtasks }
-    const handleHabitInactivityChange = (habitId, patch) => {
+    // dateStr: денят, от който е натиснато (нужен само за { inactive }).
+    //
+    // { inactive } — цялата задача:
+    //   ⏸ днес/бъдещ ден  → неактивна от този ден нататък (по-ранните не се пипат)
+    //   ⏸ минал ден       → само този ден (дефиницията на навика не се пипа)
+    //   ▶ ден от периода „неактивна от … нататък" → активна от този ден нататък
+    //                        (по-ранните дни остават неактивни)
+    //   ▶ отделно неактивен ден → само този ден
+    // { inactiveCompletions } / { inactiveSubtasks } — за ДНЕС и НАПРЕД.
+    const handleHabitInactivityChange = (habitId, patch, dateStr) => {
+      if ('inactive' in patch) {
+        setData(prev => {
+          const habit = prev.habits.find(h => h.id === habitId);
+          if (!habit || !dateStr) return prev;
+          const todayStr = formatDate(new Date());
+          const makeInactive = patch.inactive;
+          const base = { ...habit };
+          delete base.inactive;                       // старото поле се заменя с inactiveFrom
+          let nextHabit = habit;
+          let fromThisDayOn = false;
+          if (makeInactive && dateStr >= todayStr) {
+            nextHabit = { ...base, inactiveFrom: dateStr };
+            fromThisDayOn = true;
+          } else if (!makeInactive && isHabitInactiveOn(habit, dateStr)) {
+            nextHabit = { ...base, inactiveFrom: null };
+            fromThisDayOn = true;
+          }
+          const tasks = prev.tasks.map(t => {
+            if (t.habitId !== habitId) return t;
+            if (fromThisDayOn ? t.date < dateStr : t.date !== dateStr) return t;
+            if (makeInactive) return { ...t, habitInactive: true };
+            const copy = { ...t };
+            delete copy.habitInactive;
+            return copy;
+          });
+          return {
+            ...prev,
+            habits: prev.habits.map(h => (h.id === habitId ? nextHabit : h)),
+            tasks:  checkMissedTasks(tasks),
+          };
+        });
+        return;
+      }
       setData(prev => {
         const habits = prev.habits.map(h => (h.id === habitId ? { ...h, ...patch } : h));
         const habit  = habits.find(h => h.id === habitId);

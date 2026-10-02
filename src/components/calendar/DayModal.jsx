@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { formatDate, formatDisplayDate, toMidnight, isPastDate } from '../../utils/dateUtils';
 import { doesDateMatchRule } from '../../utils/ruleEngine';
-import { createTaskObject, resetTaskProgress } from '../../utils/habitUtils';
+import { createTaskObject, resetTaskProgress, toggleTaskElementInactive } from '../../utils/habitUtils';
 import { checkMissedTasks } from '../../utils/taskGenerator';
 import TaskActions from '../today/TaskActions';
 import MakeupPicker from './MakeupPicker';
@@ -55,8 +55,21 @@ export default function DayModal({ date, task, habit, allTasks, rules, onTasksUp
     if (!onHabitInactivityChange || !habit) return;
     let patch;
     if (scope === 'task') {
-      patch = { inactive: !habit.inactive };
-    } else if (scope === 'completion') {
+      // Цялата задача: важи от/за ТОЗИ ден (виж App.handleHabitInactivityChange).
+      // Прозорецът се затваря ВЕДНАГА (иначе за миг се вижда изгледът „▶ Върни като
+      // активна") — сивият ден в календара е индикацията. Първо затваряне (записва
+      // бележката), после промяната — и двете са функционални setData, по ред.
+      handleClose();
+      onHabitInactivityChange(habit.id, { inactive: !task?.habitInactive }, dateStr);
+      return;
+    }
+    if (task && isPastDate(date)) {
+      // Повторение/подзадача на минал ден — само този ден (дефиницията не се пипа).
+      // handleTaskUpdate записва и бележката; CalendarScreen затваря прозореца.
+      handleTaskUpdate(toggleTaskElementInactive(task, scope, index));
+      return;
+    }
+    if (scope === 'completion') {
       const cur = habit.inactiveCompletions ?? [];
       patch = { inactiveCompletions: cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index] };
     } else {

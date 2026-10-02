@@ -70,29 +70,25 @@ export default function TodoRow({
   };
   const handleToggleInactive = ({ scope, index }) => {
     let updated;
-    let reactivating;
     if (scope === 'task') {
-      reactivating = !!actionTodo.inactive;
       updated = { ...actionTodo, inactive: !actionTodo.inactive };
     } else if (scope === 'completion') {
-      reactivating = !!(actionTodo.completions ?? []).find(c => c.index === index)?.inactive;
       updated = { ...actionTodo, completions: (actionTodo.completions ?? []).map(c => c.index === index ? toggleElFlag(c) : c) };
     } else {
-      reactivating = !!(actionTodo.subtasks ?? []).find(s => s.index === index)?.inactive;
       updated = { ...actionTodo, subtasks: (actionTodo.subtasks ?? []).map(s => s.index === index ? toggleElFlag(s) : s) };
     }
-    // Прозорецът остава отворен САМО при „направи цялата задача неактивна" — там излиза
-    // важен надпис. Всичко друго (брой изпълнения / подзадачи; всяко „върни активно")
-    // затваря, като при отмятане (виж handleActionUpdate).
-    const keepOpen = scope === 'task' && !reactivating;
-    if (!keepOpen && modalNote !== (actionTodo.note ?? '')) {
+    // Всяко превключване затваря прозореца: цялата задача — веднага (иначе за миг се
+    // вижда изгледът „▶ Върни като активна"); повторение/подзадача — след 300 ms, като
+    // при отмятане (виж handleActionUpdate).
+    if (modalNote !== (actionTodo.note ?? '')) {
       updated = { ...updated, note: modalNote };
     }
     updated.status = computeTodoStatus(updated);
     if (updated.status !== 'completed') updated.completedAt = null;
     onSave(updated);
     setActionTodo(updated);
-    if (!keepOpen) setTimeout(() => setActionOpen(false), 300);
+    if (scope === 'task') setActionOpen(false);
+    else setTimeout(() => setActionOpen(false), 300);
   };
 
   // ── Инлайн бележка (записва при клик извън полето) ──

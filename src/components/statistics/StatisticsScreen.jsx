@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import DateInput from '../ui/DateInput';
 import SearchableSelect from '../ui/SearchableSelect';
 import { doesDateMatchRule } from '../../utils/ruleEngine';
-import { isTaskCompleted, isEntirelyInactive } from '../../utils/habitUtils';
+import { isTaskCompleted, isEntirelyInactive, isHabitInactiveOn } from '../../utils/habitUtils';
 import { toMidnight, formatDate } from '../../utils/dateUtils';
 
 const PERIODS = [
@@ -222,7 +222,7 @@ export default function StatisticsScreen({ habits, tasks, rules }) {
       </div>
 
       {/* Резултати */}
-      {selectedHabit?.inactive ? (
+      {isHabitInactiveOn(selectedHabit, formatDate(new Date())) ? (
         <div className="bg-gray-100 rounded-2xl shadow-lg p-6 text-center">
           <div className="text-5xl mb-3">⏸</div>
           <p className="text-lg font-semibold text-gray-700">Задачата е неактивна</p>

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { generateId } from '../../utils/habitUtils';
+import { generateId, getHabitInactiveFrom } from '../../utils/habitUtils';
 import { COLORS, WEEKDAY_COLORS } from '../../utils/constants';
 import { WEEKDAY_NAMES_BG } from '../../utils/dateUtils';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, formatDisplayDate } from '../../utils/dateUtils';
 import DateInput from '../ui/DateInput';
 import SubtaskEditor from '../ui/SubtaskEditor';
 
@@ -38,7 +38,7 @@ const habitHasChanged = (oldHabit, oldRule, newHabit, newRule) => {
   if (oldHabit.reminderTime !== newHabit.reminderTime)  return true;
   if ((oldHabit.description ?? null) !== (newHabit.description ?? null)) return true;
   if (JSON.stringify(oldHabit.subtaskNames ?? []) !== JSON.stringify(newHabit.subtaskNames ?? [])) return true;
-  if ((oldHabit.inactive ?? false) !== (newHabit.inactive ?? false)) return true;
+  if (getHabitInactiveFrom(oldHabit) !== getHabitInactiveFrom(newHabit)) return true;
   const sortNums = (a) => [...(a ?? [])].sort((x, y) => x - y);
   if (JSON.stringify(sortNums(oldHabit.inactiveCompletions)) !== JSON.stringify(sortNums(newHabit.inactiveCompletions))) return true;
   if (JSON.stringify(sortNums(oldHabit.inactiveSubtasks)) !== JSON.stringify(sortNums(newHabit.inactiveSubtasks))) return true;
@@ -59,7 +59,10 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
   const [description,   setDescription]   = useState(habit?.description   ?? '');
 
   // ── Неактивност ──────────────────────────────────────
-  const [inactive,            setInactive]            = useState(habit?.inactive            ?? false);
+  // Превключвателят е „неактивна от … нататък": включен = има inactiveFrom. Ако е бил
+  // включен и не е пипан, датата се пази; ново включване = от днес.
+  const origInactiveFrom = getHabitInactiveFrom(habit);
+  const [inactive,            setInactive]            = useState(!!origInactiveFrom);
   const [inactiveCompletions, setInactiveCompletions] = useState(habit?.inactiveCompletions ?? []);
   const [inactiveSubtasks,    setInactiveSubtasks]    = useState(habit?.inactiveSubtasks    ?? []);
   const toggleInList = (list, setList, idx) =>
@@ -125,7 +128,7 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
       createdAt:    habit?.createdAt ?? Date.now(),
       order:        habit?.order     ?? 999,
       manualOrder:  habit?.manualOrder ?? undefined,
-      inactive,
+      inactiveFrom: inactive ? (origInactiveFrom ?? formatDate(new Date())) : null,
       inactiveCompletions: [...inactiveCompletions].filter(i => i >= 1 && i <= times).sort((a, b) => a - b),
       inactiveSubtasks:    [...inactiveSubtasks].filter(i => i >= 1 && i <= subtaskNames.length).sort((a, b) => a - b),
     };
@@ -275,6 +278,9 @@ onFocus={e => e.target.select()}
                 <div>
                   <span className="text-sm font-semibold text-gray-700">Задачата е неактивна</span>
                   <p className="text-xs text-gray-500">Вижда се в „Днес", но е заключена и не се брои.</p>
+                  {inactive && origInactiveFrom > formatDate(new Date()) && (
+                    <p className="text-xs font-semibold text-slate-600 mt-1">⏸ Неактивна от {formatDisplayDate(new Date(origInactiveFrom + 'T00:00:00'))}</p>
+                  )}
                 </div>
                 <button
                   type="button"

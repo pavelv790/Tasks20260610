@@ -12,13 +12,14 @@ import { formatDate } from './dateUtils';
 // не се брои за завършване и не става „пропуснато".
 //
 // Източник на истината е ДЕФИНИЦИЯТА на навика:
-//   habit.inactive             — цялата задача е неактивна
+//   habit.inactiveFrom         — "YYYY-MM-DD": цялата задача е неактивна от тази дата нататък
+//                                (старо `habit.inactive: true` без дата = „от винаги")
 //   habit.inactiveCompletions  — индекси (1-базирани) на неактивни повторения
 //   habit.inactiveSubtasks     — индекси (1-базирани) на неактивни подзадачи
 //
 // Върху конкретната task инстанция това се „подпечатва" (за да работят
 // helper-ите без да им подаваме habit навсякъде):
-//   task.habitInactive         — цялата задача е неактивна
+//   task.habitInactive         — цялата задача е неактивна (истината за ТОЗИ ден)
 //   task.completions[i].inactive / task.subtasks[i].inactive
 //
 // Еднократните задачи (todos) пазят същите флагове директно на обекта
@@ -34,14 +35,59 @@ const applyInactiveFlags = (arr, inactiveIndices) => {
   });
 };
 
+// От коя дата целият навик е неактивен (или null). Старо `inactive: true` без
+// дата се чете като „от винаги" — същото поведение като преди `inactiveFrom`.
+export const getHabitInactiveFrom = (habit) =>
+  habit?.inactiveFrom ?? (habit?.inactive ? '0000-01-01' : null);
+
+// Неактивен ли е целият навик на дадена дата ("YYYY-MM-DD") според дефиницията.
+export const isHabitInactiveOn = (habit, dateStr) => {
+  const from = getHabitInactiveFrom(habit);
+  return !!from && dateStr >= from;
+};
+
 // Пренася неактивността от дефиницията на навика върху една task инстанция.
+// `habitInactive` само се ДОБАВЯ (ако датата е в периода „неактивна от … нататък");
+// махането става изрично — „▶ Върни като активна" / изключване от HabitModal —
+// за да не се изтрият отделно неактивни дни (виж раздел 4.8).
 export const syncTaskInactivity = (task, habit) => {
   if (!task || !habit) return task;
   const completions = applyInactiveFlags(task.completions, habit.inactiveCompletions);
   const subtasks    = applyInactiveFlags(task.subtasks, habit.inactiveSubtasks);
   const next = { ...task, completions, subtasks };
-  if (habit.inactive) next.habitInactive = true;
-  else delete next.habitInactive;
+  if (isHabitInactiveOn(habit, task.date)) next.habitInactive = true;
+  return next;
+};
+
+// Превключва „неактивно" на едно повторение/подзадача САМО върху тази задача (един ден) —
+// за минал ден, без да се пипа дефиницията на навика (виж раздел 4.8).
+// scope: 'completion' | 'subtask'; index: 1-базиран. Статусът се преизчислява като за
+// минал ден (като checkMissedTasks): напълно неактивна → pending (не става „пропусната");
+// всички активни отметнати → completed; иначе partial/missed. Makeup дните и ръчно
+// нулираните (manuallyReset, незавършени) пазят статуса си.
+export const toggleTaskElementInactive = (task, scope, index) => {
+  const key = scope === 'completion' ? 'completions' : 'subtasks';
+  const items = (task[key] ?? []).map(el => {
+    if (el.index !== index) return el;
+    if (!el.inactive) return { ...el, inactive: true };
+    const copy = { ...el };
+    delete copy.inactive;
+    return copy;
+  });
+  const next = { ...task, [key]: items };
+  if (!['pending', 'partial', 'missed', 'completed'].includes(next.status)) return next;
+  const done = isTaskCompleted(next);
+  if (done) {
+    if (next.status !== 'completed') {
+      next.status = 'completed';
+      next.completedAt = next.completedAt ?? new Date().toISOString();
+    }
+    return next;
+  }
+  if (next.manuallyReset && next.status !== 'completed') return next;
+  next.completedAt = null;
+  if (isEntirelyInactive(next)) next.status = 'pending';
+  else next.status = hasTaskProgress(next) ? 'partial' : 'missed';
   return next;
 };
 

@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Calendar, Search, Plus } from 'lucide-react'
 import { formatDate, formatDisplayDateWithToday, getWeekdayNameBG, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight, isPastDate } from '../../utils/dateUtils';
 import { doesDateMatchRule } from '../../utils/ruleEngine';
 import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerator';
-import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive, createTaskObject, resetTaskProgress } from '../../utils/habitUtils';
+import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive, createTaskObject, resetTaskProgress, toggleTaskElementInactive } from '../../utils/habitUtils';
 import { getCalendarDayState } from '../../utils/calendarStates';
 import { useConfetti } from '../../hooks/useConfetti';
 import { playSound } from '../../utils/sounds';
@@ -160,7 +160,7 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
     const task  = tasksForDate.find(t => t.habitId === ref.id);
     if (!habit || !task) return null;
     const status = getEffectiveStatus(task);
-    const isInert = (!!habit.inactive || isEntirelyInactive(task)) && !isTaskCompleted(task);
+    const isInert = isEntirelyInactive(task) && !isTaskCompleted(task);
     if (!isInert) {
       if (status === 'completed' && !task.makeupFromDate) return null;
       if (isTaskCompleted(task) && task.makeupFromDate) return null;
@@ -200,26 +200,33 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
 
   const handleToggleInactive = ({ scope, index }) => {
     if (!modalHabit || !onHabitInactivityChange) return;
-    let patch;
-    let reactivating;
     if (scope === 'task') {
-      reactivating = !!modalHabit.inactive;
-      patch = { inactive: !modalHabit.inactive };
-    } else if (scope === 'completion') {
+      // Цялата задача: истината за ТОЗИ ден е печатът на задачата (виж
+      // App.handleHabitInactivityChange). Прозорецът се затваря ВЕДНАГА — иначе за миг
+      // се вижда изгледът „▶ Върни като активна". Първо затваряне (записва бележката),
+      // после промяната — и двете са функционални setData, по ред.
+      closeModal();
+      onHabitInactivityChange(modalHabit.id, { inactive: !modalTask?.habitInactive }, modalTask?.date ?? dateStr);
+      return;
+    }
+    if (modalTask && modalTask.date < formatDate(new Date())) {
+      // Повторение/подзадача на минал ден — само този ден (дефиницията не се пипа);
+      // handleTaskUpdate записва и бележката и затваря след 300 ms.
+      handleTaskUpdate(toggleTaskElementInactive(modalTask, scope, index));
+      return;
+    }
+    let patch;
+    if (scope === 'completion') {
       const cur = modalHabit.inactiveCompletions ?? [];
-      reactivating = cur.includes(index);
       patch = { inactiveCompletions: cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index] };
     } else {
       const cur = modalHabit.inactiveSubtasks ?? [];
-      reactivating = cur.includes(index);
       patch = { inactiveSubtasks: cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index] };
     }
     onHabitInactivityChange(modalHabit.id, patch);
-    // Прозорецът остава отворен САМО при „направи цялата задача неактивна" — там излиза
-    // важен надпис. Всичко друго (брой изпълнения / подзадачи; всяко „върни активно")
-    // затваря, като при отмятане (виж handleTaskUpdate).
-    const keepOpen = scope === 'task' && !reactivating;
-    if (!keepOpen) setTimeout(() => closeModal(), 300);
+    // Повторение / подзадача: затваря след 300 ms, като при отмятане (виж handleTaskUpdate).
+    // През ref — за да види бележката и задачите СЛЕД промяната, а не старото копие.
+    setTimeout(() => closeModalRef.current(), 300);
   };
 
   const handleTaskUpdate = (updatedTask) => {
@@ -337,7 +344,9 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
     setShowMakeupPicker(false);
     setShowUnlinkedPicker(false);
   };
-  
+  const closeModalRef = useRef(closeModal);
+  useEffect(() => { closeModalRef.current = closeModal; });
+
   // Пренареждане в общия ред (навици + еднократни); пише пълния ред в dayOrders[dateStr]
   const moveItem = (id, direction) => {
     if (isSearching) return;

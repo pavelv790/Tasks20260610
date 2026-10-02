@@ -1,4 +1,6 @@
 import { Edit2, Trash2, Archive } from 'lucide-react';
+import { getHabitInactiveFrom } from '../../utils/habitUtils';
+import { formatDate, formatDisplayDate } from '../../utils/dateUtils';
 
 export default function HabitCard({
   habit,
@@ -15,6 +17,7 @@ export default function HabitCard({
   isLast,
 }) {
   const ringClass = habit.isDefault ? 'ring-2 ring-indigo-500' : '';
+  const inactiveFrom = getHabitInactiveFrom(habit);
 
   return (
       <div
@@ -85,8 +88,12 @@ export default function HabitCard({
           <p>🔄 {habit.timesPerDay}x на ден</p>
           {habit.subtasksCount > 0 && <p>📋 {habit.subtasksCount} подзадачи</p>}
           {habit.reminderTime && <p>🔔 {habit.reminderTime}</p>}
-          {habit.inactive
-            ? <p className="text-slate-600 font-semibold">⏸ Неактивна</p>
+          {inactiveFrom
+            ? <p className="text-slate-600 font-semibold">
+                {inactiveFrom > formatDate(new Date())
+                  ? `⏸ Неактивна от ${formatDisplayDate(new Date(inactiveFrom + 'T00:00:00'))}`
+                  : '⏸ Неактивна'}
+              </p>
             : ((habit.inactiveCompletions?.length || habit.inactiveSubtasks?.length)
                 ? <p className="text-slate-500 font-semibold">⏸ Частично неактивна</p>
                 : null)}
