@@ -604,6 +604,8 @@
               <MissedScreen
                 habits={data.habits}
                 tasks={data.tasks}
+                rules={data.rules}
+                onTasksUpdate={handleTasksUpdate}
                 onNavigateToCalendar={(date, habitId) => {
                   setCalendarTarget({ date, habitId });
                   setActiveTab('calendar');
