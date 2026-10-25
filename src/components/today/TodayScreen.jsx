@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Search, Plus } from 'lucide-react';
 import { formatDate, formatDisplayDate, formatDisplayDateWithToday, getWeekdayNameBG, MONTH_NAMES_BG_CAP, WEEKDAY_NAMES_BG, toMidnight } from '../../utils/dateUtils';
-import { doesDateMatchRule } from '../../utils/ruleEngine';
+import { doesDateMatchRule, NO_DUE } from '../../utils/ruleEngine';
 import { generateTasksForMonth, checkMissedTasks } from '../../utils/taskGenerator';
-import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive, createTaskObject, resetTaskProgress, toggleTaskElementInactive, isPastDue, isTaskWaitingOn } from '../../utils/habitUtils';
+import { getEffectiveStatus, getProgressText, isTaskCompleted, isEntirelyInactive, createTaskObject, resetTaskProgress, toggleTaskElementInactive, isPastDue, isTaskWaitingOn, isHabitInactiveOn } from '../../utils/habitUtils';
 import { getCalendarDayState } from '../../utils/calendarStates';
 import { useConfetti } from '../../hooks/useConfetti';
 import { playSound } from '../../utils/sounds';
@@ -13,6 +13,11 @@ import TodoModal from './TodoModal';
 import Toast from '../ui/Toast';
 import MakeupPicker from '../calendar/MakeupPicker';
 import UnlinkedPicker from '../calendar/UnlinkedPicker';
+
+// „срок до 31 октомври 2026" / „без краен срок"
+const dueLabel = (dueDate) => (dueDate === NO_DUE
+  ? 'без краен срок'
+  : `срок до ${formatDisplayDate(new Date(dueDate + 'T00:00:00'))}`);
 
 export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksUpdate, onTodoSave, onTodoDelete, onHabitInactivityChange, dayOrders, onDayOrdersChange }) {
   const [selectedDate,   setSelectedDate]   = useState(new Date());
@@ -136,6 +141,9 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
   // на навика за деня (ако има такава — тогава се виждат и двете) ──
   const carriedTasks = tasks
     .filter(t => isTaskWaitingOn(t, dateStr) && !isTaskCompleted(t))
+    // Целият навик е неактивен в разглеждания ден → чакащите му не се показват
+    // (връщат се, щом навикът стане пак активен)
+    .filter(t => !isHabitInactiveOn(habits.find(h => h.id === t.habitId), dateStr))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const naturalRefs = [
@@ -646,8 +654,8 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
             // Срок: „от 21 октомври · до 31 октомври" за чакаща; „до 31 октомври" за днешна със срок
             const dueText = task.dueDate && status !== 'missed'
               ? (carried
-                  ? `от ${formatDisplayDate(new Date(task.date + 'T00:00:00'))} · срок до ${formatDisplayDate(new Date(task.dueDate + 'T00:00:00'))}`
-                  : `срок до ${formatDisplayDate(new Date(task.dueDate + 'T00:00:00'))}`)
+                  ? `от ${formatDisplayDate(new Date(task.date + 'T00:00:00'))} · ${dueLabel(task.dueDate)}`
+                  : dueLabel(task.dueDate))
               : null;
 
             return (
@@ -791,7 +799,7 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
                   <h2 className="text-xl font-bold text-gray-800">{modalHabit.name}</h2>
                   <p className="text-sm text-gray-500">{formatDisplayDateWithToday(modalDate)}</p>
                   {modalTask.dueDate && !isTaskCompleted(modalTask) && modalTask.status !== 'missed' && (
-                    <p className="text-xs font-semibold text-sky-700">⏳ Срок до {formatDisplayDate(new Date(modalTask.dueDate + 'T00:00:00'))}</p>
+                    <p className="text-xs font-semibold text-sky-700">⏳ {dueLabel(modalTask.dueDate)}</p>
                   )}
                 </div>
                 <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">✕</button>

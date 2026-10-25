@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { formatDate } from '../utils/dateUtils';
-import { isTaskWaiting } from '../utils/habitUtils';
+import { isTaskWaiting, isHabitInactiveOn } from '../utils/habitUtils';
 
 export function useNotifications(habits, tasks) {
   useEffect(() => {
@@ -16,7 +16,7 @@ export function useNotifications(habits, tasks) {
 
         // Днешната задача; ако няма (или е изпълнена) — чакаща задача с краен срок
         const ownTask = tasks.find(t => t.habitId === habit.id && t.date === today);
-        const waiting = tasks.find(t => t.habitId === habit.id && isTaskWaiting(t));
+        const waiting = isHabitInactiveOn(habit, today) ? null : tasks.find(t => t.habitId === habit.id && isTaskWaiting(t));
         const task = ownTask && ownTask.status !== 'completed' ? ownTask : (waiting ?? ownTask);
         if (!task) return;
 

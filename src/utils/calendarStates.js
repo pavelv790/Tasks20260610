@@ -23,7 +23,7 @@
 //       (до изпълнението ѝ / до срока) — виж getWaitingSource
 // ============================================================
 
-import { doesDateMatchRule } from './ruleEngine';
+import { doesDateMatchRule, NO_DUE } from './ruleEngine';
 import { toMidnight, formatShortDate, formatDate } from './dateUtils';
 import { isTaskCompleted, isEntirelyInactive, hasTaskProgress } from './habitUtils';
 
@@ -146,7 +146,7 @@ export const getCalendarDayState = (date, task, rule) => {
 
   // Чака изпълнение (краен срок): денят е минал, но срокът — не
   if (isPast && task.dueDate && task.dueDate >= formatDate(today) && !hasTaskProgress(task)) {
-    return { ...STATE.C16, label: `Чака до ${formatShortDate(task.dueDate)}` };
+    return { ...STATE.C16, label: task.dueDate === NO_DUE ? 'Чака' : `Чака до ${formatShortDate(task.dueDate)}` };
   }
 
   // Pending задача
@@ -159,13 +159,17 @@ export const getCalendarDayState = (date, task, rule) => {
 // `dateStr` и на този ден още е чакала — не е изпълнена преди него и срокът ѝ не е
 // минал. Връща тази задача (или null). Денят на изпълнението също се отбелязва.
 // Пропуснатите задачи остават отбелязани до срока си (историята на чакането).
+// Без краен срок (NO_DUE) и още неизпълнена → отбелязва се само до днес (не безкрайно напред).
 export const getWaitingSource = (dateStr, habitTasks) => {
+  const todayStr = formatDate(new Date());
   for (const t of habitTasks) {
     if (!t.dueDate || !(t.date < dateStr && dateStr <= t.dueDate)) continue;
     if (t.makeupForDate || t.makeupFromDate || t.habitInactive || isEntirelyInactive(t)) continue;
     if (isTaskCompleted(t)) {
       const doneDay = t.completedAt ? formatDate(new Date(t.completedAt)) : null;
       if (!doneDay || dateStr > doneDay) continue;
+    } else if (t.dueDate === NO_DUE && dateStr > todayStr) {
+      continue;
     }
     return t;
   }

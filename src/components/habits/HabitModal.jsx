@@ -96,6 +96,8 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
 
   const isDaily = ruleType === 'simple' && simplePattern === 'daily';
   const isOnce  = ruleType === 'simple' && simplePattern === 'today';
+  // „До следващото повторение" няма смисъл при „Всеки ден" (следващото е утре) и при „Еднократно"
+  const nextUnavailable = isDaily || isOnce;
 
   // ── UI state ─────────────────────────────────────────
   const [error,           setError]           = useState('');
@@ -158,12 +160,13 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
     });
 
     let deadline = null;
-    if (deadlineOn && !isDaily && !(isOnce && deadlineType === 'next')) {
+    if (deadlineOn && !(nextUnavailable && deadlineType === 'next')) {
       if (deadlineType === 'days')     deadline = { type: 'days', days: Math.max(1, parseInt(deadlineDays) || 1) };
       if (deadlineType === 'weekdays') deadline = { type: 'weekdays', weekdays: [...deadlineWeekdays].sort((a, b) => a - b) };
       if (deadlineType === 'monthly')  deadline = { type: 'monthly', day: deadlineMonthDay };
       if (deadlineType === 'yearly')   deadline = { type: 'yearly', month: deadlineYearMonth, day: deadlineYearDay };
       if (deadlineType === 'next')     deadline = { type: 'next' };
+      if (deadlineType === 'none')     deadline = { type: 'none' };
     }
 
     const newRule = {
@@ -195,8 +198,12 @@ export default function HabitModal({ habit, existingRule, habits, onSave, onClos
       setError('Изберете поне един ден от седмицата'); return;
     }
 
-    if (deadlineOn && !isDaily && deadlineType === 'weekdays' && deadlineWeekdays.length === 0) {
+    if (deadlineOn && deadlineType === 'weekdays' && deadlineWeekdays.length === 0) {
       setError('Изберете поне един ден от седмицата за крайния срок'); return;
+    }
+
+    if (deadlineOn && deadlineType === 'next' && nextUnavailable) {
+      setError(`„До следващото повторение" не важи при „${isDaily ? 'Всеки ден' : 'Еднократно'}" — изберете друг краен срок`); return;
     }
 
     const { newHabit, newRule } = buildObjects();
@@ -525,13 +532,12 @@ onFocus={e => e.target.select()}
               </div>
             </div>
 
-            {/* Краен срок */}
-            {!isDaily && (
-              <div className="border-2 border-gray-200 rounded-xl p-4 space-y-3">
+            {/* Краен срок — видим винаги (и при „Всеки ден", който е по подразбиране) */}
+            <div className="border-2 border-gray-200 rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <span className="text-sm font-semibold text-gray-700">⏳ Показвай всеки ден, докато не я изпълня</span>
-                    <p className="text-xs text-gray-500">Задачата се появява в деня от правилото и остава в „Днес" всеки ден до изпълнението ѝ. Ако не е изпълнена до крайния срок, става пропусната.</p>
+                    <p className="text-xs text-gray-500">Задачата се появява в деня от правилото и остава в „Днес" всеки ден до изпълнението ѝ. Ако не е изпълнена до крайния срок, става пропусната. Всяко повторение е отделна задача — напр. медитация всеки ден: ако пропуснеш днес, утре виждаш две.</p>
                   </div>
                   <button
                     type="button"
@@ -618,21 +624,30 @@ onFocus={e => e.target.select()}
                       </div>
                     </div>
 
-                    {/* До следващото повторение (няма смисъл при „Еднократно") */}
-                    {!isOnce && (
-                      <RadioOption current={deadlineType === 'next'} onChange={() => setDeadlineType('next')} label="🔁 До следващото повторение" />
-                    )}
+                    {/* До следващото повторение (няма смисъл при „Всеки ден" и „Еднократно") */}
+                    <div className={nextUnavailable ? 'opacity-50' : ''}>
+                      <RadioOption current={deadlineType === 'next'} disabled={nextUnavailable}
+                        onChange={() => setDeadlineType('next')} label="🔁 До следващото повторение" />
+                      {nextUnavailable && (
+                        <p className="ml-6 mt-1 text-xs text-gray-500">* Не важи при „{isDaily ? 'Всеки ден' : 'Еднократно'}" — избери друг краен срок</p>
+                      )}
+                    </div>
+
+                    {/* Без краен срок */}
+                    <RadioOption current={deadlineType === 'none'} onChange={() => setDeadlineType('none')} label="♾️ Без краен срок" />
 
                     {(deadlineType === 'weekdays' || deadlineType === 'monthly' || deadlineType === 'yearly') && (
                       <p className="text-xs text-gray-500">* Избраният ден е последният, в който задачата още не е пропусната. Ако съвпада с деня на появата, срокът е следващото му срещане.</p>
                     )}
-                    {deadlineType === 'next' && (
+                    {deadlineType === 'next' && !nextUnavailable && (
                       <p className="text-xs text-gray-500">* Напр. всеки месец на 21-во: срокът е 20-о число на следващия месец.</p>
+                    )}
+                    {deadlineType === 'none' && (
+                      <p className="text-xs text-gray-500">* Задачата никога не става пропусната — стои в „Днес", докато не я изпълниш. Неизпълнените повторения се натрупват.</p>
                     )}
                   </div>
                 )}
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
@@ -678,10 +693,10 @@ onFocus={e => e.target.select()}
 }
 
 // Малък helper компонент за radio бутон
-function RadioOption({ current, onChange, label }) {
+function RadioOption({ current, onChange, label, disabled = false }) {
   return (
-    <label className="flex items-center gap-2 p-3 bg-white rounded-lg cursor-pointer hover:bg-indigo-50">
-      <input type="radio" checked={current} onChange={onChange} className="w-4 h-4 accent-indigo-500" />
+    <label className={`flex items-center gap-2 p-3 bg-white rounded-lg ${disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-indigo-50'}`}>
+      <input type="radio" checked={current} onChange={onChange} disabled={disabled} className="w-4 h-4 accent-indigo-500" />
       <span className="font-medium">{label}</span>
     </label>
   );

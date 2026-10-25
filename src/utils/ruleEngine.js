@@ -104,11 +104,16 @@ export const getNextRuleDate = (fromDate, rule, maxDays = 60) => {
 //                                            последния ден на по-късите месеци)
 //   { type: 'yearly',   month: 0..11, day } — до първата такава дата
 //   { type: 'next' }                       — до деня преди следващото повторение
+//   { type: 'none' }                       — без краен срок: никога не става пропусната
+//                                            (dueDate = NO_DUE). Повторенията се натрупват.
 //
 // При weekdays/monthly/yearly денят на появата НЕ се брои — ако съвпада, срокът е
 // следващото срещане (напр. появява се на 21-во, срок „21-во" → 21-во следващия месец).
 // Денят на срока е последният ден, в който задачата още НЕ е пропусната.
 // -------------------------------------------------------
+
+// „Без краен срок" — dueDate далеч в бъдещето (сравнява се като низ с другите дати)
+export const NO_DUE = '9999-12-31';
 
 const lastDayOf = (y, m) => new Date(y, m + 1, 0).getDate();
 
@@ -148,6 +153,8 @@ export const computeDueDate = (dateStr, rule) => {
       due = firstAfter(start, c =>
         c.getMonth() === dl.month && c.getDate() === Math.min(dl.day, lastDayOf(c.getFullYear(), dl.month)), 370);
       break;
+    case 'none':
+      return NO_DUE;
     case 'next': {
       const maxDays = Math.max(800, (parseInt(rule.customInterval) || 0) + 1);
       const next = getNextRuleDate(start, rule, maxDays);

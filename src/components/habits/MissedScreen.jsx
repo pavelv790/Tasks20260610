@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Search, CheckSquare, Square, MinusSquare } from 'lucide-react';
-import { toMidnight, formatDate } from '../../utils/dateUtils';
-import { isTaskCompleted, isEntirelyInactive, isTaskWaiting } from '../../utils/habitUtils';
+import { toMidnight, formatDate, formatShortDate } from '../../utils/dateUtils';
+import { isTaskCompleted, isEntirelyInactive, isTaskWaiting, isHabitInactiveOn } from '../../utils/habitUtils';
+import { NO_DUE } from '../../utils/ruleEngine';
 import { bulkMarkCompleted, bulkMakeInactive, bulkReset, pickCompletable, pickActivatable } from '../../utils/bulkTaskActions';
 import ConfirmModal from '../ui/ConfirmModal';
 import Toast from '../ui/Toast';
@@ -18,6 +19,26 @@ const WEEKDAY_NAMES = ['неделя','понеделник','вторник','�
 function formatDisplayDate(dateStr) {
   const d = new Date(dateStr);
   return `${WEEKDAY_NAMES[d.getDay()]}, ${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// Попада ли датата ("YYYY-MM-DD") в избрания период (Всички / Тази седмица / Този месец)
+function isInPeriod(dateStr, period) {
+  const today = toMidnight(new Date());
+  const d = toMidnight(new Date(dateStr));
+  if (period === 'week') {
+    const start = new Date(today);
+    const day = today.getDay();
+    start.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return d >= toMidnight(start) && d <= toMidnight(end);
+  }
+  if (period === 'month') {
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    return d >= toMidnight(start) && d <= toMidnight(end);
+  }
+  return true;
 }
 
 export default function MissedScreen({ habits, tasks, rules = [], onTasksUpdate, onNavigateToCalendar }) {
@@ -44,51 +65,18 @@ export default function MissedScreen({ habits, tasks, rules = [], onTasksUpdate,
         }
         if (t.date === formatDate(today) && t.status !== 'missed') return false;
 
-        const d = toMidnight(new Date(t.date));
-
-        if (period === 'week') {
-          const start = new Date(today);
-          const day = today.getDay();
-          start.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
-          const end = new Date(start);
-          end.setDate(start.getDate() + 6);
-          if (d < toMidnight(start) || d > toMidnight(end)) return false;
-        } else if (period === 'month') {
-          const start = new Date(today.getFullYear(), today.getMonth(), 1);
-          const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-          if (d < toMidnight(start) || d > toMidnight(end)) return false;
-        }
-
-        return true;
+        return isInPeriod(t.date, period);
       })
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [tasks, period]);
 
   const unlinkedTasks = useMemo(() => {
-    const today = toMidnight(new Date());
-
     return tasks
       .filter(t => {
         if (t.createdBy !== 'manual') return false;
         if (t.makeupFromDate || t.makeupForDate) return false;
         if (t.manuallyReset) return false; // нулиран (с бележка) — вече не е отработен
-
-        const d = toMidnight(new Date(t.date));
-
-        if (period === 'week') {
-          const start = new Date(today);
-          const day = today.getDay();
-          start.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
-          const end = new Date(start);
-          end.setDate(start.getDate() + 6);
-          if (d < toMidnight(start) || d > toMidnight(end)) return false;
-        } else if (period === 'month') {
-          const start = new Date(today.getFullYear(), today.getMonth(), 1);
-          const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-          if (d < toMidnight(start) || d > toMidnight(end)) return false;
-        }
-
-        return true;
+        return isInPeriod(t.date, period);
       })
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [tasks, period]);
@@ -99,6 +87,19 @@ export default function MissedScreen({ habits, tasks, rules = [], onTasksUpdate,
     return m;
   }, [habits]);
 
+  // Чакащи (краен срок / без срок): появили се преди днес, неизпълнени, срокът не е минал.
+  // Същите като допълнителните карти в „Днес" — тук за групово изчистване (напр. след почивка).
+  const waitingTasks = useMemo(() => {
+    const todayStr = formatDate(new Date());
+    return tasks
+      .filter(t => {
+        if (!isTaskWaiting(t)) return false;
+        if (isHabitInactiveOn(habitMap[t.habitId], todayStr)) return false;
+        return isInPeriod(t.date, period);
+      })
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [tasks, period, habitMap]);
+
   const filteredMissedTasks = searchQuery.trim()
     ? missedTasks.filter(t => habitMap[t.habitId]?.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
     : missedTasks;
@@ -107,10 +108,19 @@ export default function MissedScreen({ habits, tasks, rules = [], onTasksUpdate,
     ? unlinkedTasks.filter(t => habitMap[t.habitId]?.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
     : unlinkedTasks;
 
+  const filteredWaitingTasks = searchQuery.trim()
+    ? waitingTasks.filter(t => habitMap[t.habitId]?.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : waitingTasks;
+
+  const listsByView = {
+    missed:   { all: missedTasks,   filtered: filteredMissedTasks },
+    waiting:  { all: waitingTasks,  filtered: filteredWaitingTasks },
+    unlinked: { all: unlinkedTasks, filtered: filteredUnlinkedTasks },
+  };
+
   // ── Групов избор ────────────────────────────────────────
   // Всичко се отнася само до ПОКАЗАНИТЕ (след период + търсене) задачи.
-  const visibleRows = (view === 'missed' ? filteredMissedTasks : filteredUnlinkedTasks)
-    .filter(t => habitMap[t.habitId]);
+  const visibleRows = listsByView[view].filtered.filter(t => habitMap[t.habitId]);
   const selectedVisible = visibleRows.filter(t => selectedIds.has(t.id));
   const allSelected  = visibleRows.length > 0 && selectedVisible.length === visibleRows.length;
   const someSelected = selectedVisible.length > 0;
@@ -229,6 +239,12 @@ export default function MissedScreen({ habits, tasks, rules = [], onTasksUpdate,
     </span>
   );
 
+  const waitingBadge = (task) => (
+    <span className="text-xs px-3 py-1 rounded-full font-semibold bg-sky-100 text-sky-700 whitespace-nowrap">
+      {task.dueDate === NO_DUE ? 'чака' : `чака до ${formatShortDate(task.dueDate)}`}
+    </span>
+  );
+
   const unlinkedBadge = (task) => (
     task.habitInactive
       ? <span className="text-xs px-3 py-1 rounded-full font-semibold bg-gray-200 text-gray-600">неактивна</span>
@@ -248,6 +264,15 @@ export default function MissedScreen({ habits, tasks, rules = [], onTasksUpdate,
             }`}
           >
             Пропуснати
+          </button>
+          <button onClick={() => changeView('waiting')}
+            className={`flex-1 py-2 px-3 rounded-xl text-sm font-semibold transition-all ${
+              view === 'waiting'
+                ? 'bg-gradient-to-r from-sky-400 to-sky-500 text-white shadow-md'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Чакащи
           </button>
           <button onClick={() => changeView('unlinked')}
             className={`flex-1 py-2 px-3 rounded-xl text-sm font-semibold transition-all ${
@@ -274,7 +299,7 @@ export default function MissedScreen({ habits, tasks, rules = [], onTasksUpdate,
         </div>
       </div>
 
-      {(view === 'missed' ? missedTasks.length > 0 : unlinkedTasks.length > 0) && (
+      {listsByView[view].all.length > 0 && (
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
@@ -299,6 +324,18 @@ export default function MissedScreen({ habits, tasks, rules = [], onTasksUpdate,
             <p className="text-gray-500">Няма намерени задачи</p>
           </div>
         ) : renderList(filteredMissedTasks, missedBadge)
+      ) : view === 'waiting' ? (
+        waitingTasks.length === 0 ? (
+          <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+            <div className="text-5xl mb-3">⏳</div>
+            <p className="text-lg font-semibold text-gray-700">Няма чакащи задачи</p>
+            <p className="text-gray-500 mt-1 text-sm">Тук са задачите с „Показвай всеки ден, докато не я изпълня", появили се в минал ден и още неизпълнени</p>
+          </div>
+        ) : filteredWaitingTasks.length === 0 ? (
+          <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+            <p className="text-gray-500">Няма намерени задачи</p>
+          </div>
+        ) : renderList(filteredWaitingTasks, waitingBadge)
       ) : (
         unlinkedTasks.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
