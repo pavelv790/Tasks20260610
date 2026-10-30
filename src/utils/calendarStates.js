@@ -168,7 +168,9 @@ export const getWaitingSource = (dateStr, habitTasks) => {
     if (isTaskCompleted(t)) {
       const doneDay = t.completedAt ? formatDate(new Date(t.completedAt)) : null;
       if (!doneDay || dateStr > doneDay) continue;
-    } else if (t.dueDate === NO_DUE && dateStr > todayStr) {
+    } else if (dateStr > todayStr && (t.dueDate === NO_DUE || t.date >= todayStr)) {
+      // Неизпълнена: бъдещ ден се отбелязва само ако задачата вече чака (денят ѝ е минал)
+      // и има краен срок; без срок — само до днес
       continue;
     }
     return t;

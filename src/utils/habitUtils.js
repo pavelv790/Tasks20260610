@@ -112,6 +112,9 @@ export const isPastDue = (task) => getTaskDue(task) < formatDate(new Date());
 export const isTaskWaitingOn = (task, onDateStr) => {
   if (!task?.dueDate) return false;
   if (!(task.date < onDateStr && onDateStr <= task.dueDate)) return false;
+  // Натрупва се само задача, чийто ден ВЕЧЕ е минал: при поглед в бъден ден задачите от
+  // днес до него още не са пропуснати — просто не е дошло времето им.
+  if (task.date >= formatDate(new Date()) && !isTaskCompleted(task)) return false;
   if (task.makeupForDate || task.makeupFromDate) return false;
   if (task.habitInactive || isEntirelyInactive(task)) return false;
   if (task.status === 'missed') return false;
