@@ -125,7 +125,8 @@ export default function TodayScreen({ habits, tasks, rules, todos = [], onTasksU
   // ── Еднократни задачи за този ден (+ пренасяне на просрочените в „Днес") ──
   const todoBelongsHere = (t) => {
     const d = t.date ?? todayStr;
-    if (d === dateStr) return true;
+    // Минал ден: неизпълнена задача вече е пренесена в „Днес" и не остава в стария ден
+    if (d === dateStr) return d >= todayStr || t.status === 'completed';
     if (isTodaySelected && d < todayStr && t.status !== 'completed') return true;
     return false;
   };
